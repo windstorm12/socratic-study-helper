@@ -1,11 +1,12 @@
 from flask import Flask, request, jsonify, render_template
-import google.generativeai as genai
+from google import genai
 
 # ----------------------
 # Configure AI
 # ----------------------
-genai.configure(api_key="AIzaSyBRZdFOc5GljNkEoZdLh-HA_EjfM3q_kRA")
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Initialize the client with your API key
+client = genai.Client(api_key="AIzaSyBRZdFOc5GljNkEoZdLh-HA_EjfM3q_kRA")
+model_name = "gemini-1.5-flash"  # update if needed
 
 # ----------------------
 # Global variables
@@ -26,8 +27,8 @@ def get_answer(user_subject, user_input):
     prompt = f"""
     You are Socrates, a master teacher guiding a student through deep critical thinking. 
     Your goal is to make the student reason carefully, analyze, and reflect, not just recall facts. Each of your question should help identify
-    the learning gaps the user has. If you see any incorrect explaination your question should indirectly convey that the user might be incorrect.
-    If you notice any incorrect explainations, ask the user some critical thinking questions that challenge their understanding. if the user 
+    the learning gaps the user has. If you see any incorrect explanation your question should indirectly convey that the user might be incorrect.
+    If you notice any incorrect explanations, ask the user some critical thinking questions that challenge their understanding. If the user 
     is not able to answer the question, then help the user with a bit easier question and a hint.
     Ask questions that: 
     - Explore causes, consequences, and relationships. 
@@ -39,7 +40,11 @@ def get_answer(user_subject, user_input):
     You can only generate 1 question
     The user is talking about {user_subject} and they just said {user_input}, the conversation history is {conversation}
     """
-    response = model.generate_content(prompt)
+    # Generate AI response using the new Client
+    response = client.models.generate_content(
+        model=model_name,
+        contents=prompt
+    )
     ai_answer = response.text
     AI_append(ai_answer)
     return ai_answer
@@ -51,9 +56,8 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('index.html')  # Flask will look inside 'templates' folder
+    return render_template('index.html')
 
-# Route to set the subject
 @app.route('/set_subject', methods=['POST'])
 def set_subject():
     global user_subject
@@ -61,21 +65,14 @@ def set_subject():
     user_subject = data.get('subject', '')
     return jsonify({"status": "success", "subject": user_subject})
 
-# Route to ask a question
 @app.route('/ask', methods=['POST'])
 def ask():
     global user_subject
     data = request.json
     user_input = data.get('message', '')
-
-    # Append user input
     User_append(user_input)
-
-    # Get AI response
     ai_answer = get_answer(user_subject, user_input)
-
     return jsonify({"answer": ai_answer})
 
-# Run server
 if __name__ == "__main__":
     app.run(debug=True)
