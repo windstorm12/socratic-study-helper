@@ -131,6 +131,8 @@
   </div>
 
   <script>
+    const BACKEND_URL = "https://socratic-study-helper-production.up.railway.app/";
+
     const chatContainer = document.getElementById('chatContainer');
     const inputContainer = document.getElementById('inputContainer');
     const input = document.getElementById('userInput');
@@ -154,7 +156,7 @@
       addMessage(message, 'userMsg');
       input.value = '';
 
-      const response = await fetch('/ask', {
+      const response = await fetch(`${BACKEND_URL}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, subject: currentSubject })
@@ -176,15 +178,11 @@
       conversation = [];
     }
 
-    function loadConversation() {
-      // Placeholder for backend logic
-    }
-
     async function setSubject(subject) {
       if (!subject) return;
       currentSubject = subject;
-      inputContainer.style.display = "flex"; // show input box once subject is selected
-      await fetch('/set_subject', {
+      inputContainer.style.display = "flex";
+      await fetch(`${BACKEND_URL}/set_subject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject })

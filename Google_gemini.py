@@ -1,5 +1,13 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 from google import genai
+import os
+
+# ----------------------
+# Flask app
+# ----------------------
+app = Flask(__name__)
+CORS(app)  # <-- enables CORS for all routes
 
 # ----------------------
 # Configure AI
