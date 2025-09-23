@@ -12,8 +12,12 @@ CORS(app)  # <-- enables CORS for all routes
 # ----------------------
 # Configure AI
 # ----------------------
-# Initialize the client with your API key
-client = genai.Client(api_key="AIzaSyBRZdFOc5GljNkEoZdLh-HA_EjfM3q_kRA")
+# Initialize the client with your API key from environment variable
+api_key = os.environ.get('GEMINI_API_KEY')
+if not api_key:
+    raise ValueError("GEMINI_API_KEY environment variable is required")
+
+client = genai.Client(api_key=api_key)
 model_name = "gemini-1.5-flash"  # update if needed
 
 # ----------------------
@@ -58,9 +62,8 @@ def get_answer(user_subject, user_input):
     return ai_answer
 
 # ----------------------
-# Flask app
+# Routes
 # ----------------------
-app = Flask(__name__)
 
 @app.route('/')
 def index():
