@@ -3,6 +3,9 @@ from flask_cors import CORS
 from google import genai
 import os
 import logging
+import base64
+import hashlib
+from cryptography.fernet import Fernet, InvalidToken
 
 # ----------------------
 # Flask app
@@ -204,6 +207,44 @@ def me():
     if session.get('authenticated'):
         return jsonify({"authenticated": True, "username": session.get('username')})
     return jsonify({"authenticated": False}), 200
+
+# ----------------------
+# Encryption helpers and endpoints
+# ----------------------
+
+def _get_fernet() -> Fernet:
+    secret = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+    # Derive a 32-byte urlsafe key from SECRET_KEY deterministically
+    digest = hashlib.sha256(secret.encode('utf-8')).digest()
+    key = base64.urlsafe_b64encode(digest)
+    return Fernet(key)
+
+@app.route('/encrypt', methods=['POST'])
+@login_required
+def encrypt_payload():
+    data = request.get_json(silent=True)
+    if data is None:
+        return jsonify({"error": "Missing JSON body"}), 400
+    f = _get_fernet()
+    token = f.encrypt(jsonify(data).get_data())
+    # Return as base64 text
+    return jsonify({"ciphertext": token.decode('utf-8')}), 200
+
+@app.route('/decrypt', methods=['POST'])
+@login_required
+def decrypt_payload():
+    payload = request.get_json(silent=True) or {}
+    ciphertext = payload.get('ciphertext', '')
+    if not ciphertext:
+        return jsonify({"error": "Missing ciphertext"}), 400
+    f = _get_fernet()
+    try:
+        plaintext = f.decrypt(ciphertext.encode('utf-8'))
+        # plaintext is raw JSON bytes that we produced via jsonify; return as passthrough JSON
+        from flask import Response
+        return Response(response=plaintext, status=200, mimetype='application/json')
+    except InvalidToken:
+        return jsonify({"error": "Invalid or corrupted ciphertext"}), 400
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
