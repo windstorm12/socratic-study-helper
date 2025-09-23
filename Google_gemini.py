@@ -69,6 +69,10 @@ def get_answer(user_subject, user_input):
 def index():
     return render_template('index.html')
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"}), 200
+
 @app.route('/set_subject', methods=['POST'])
 def set_subject():
     global user_subject
