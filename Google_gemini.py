@@ -10,8 +10,18 @@ import logging
 app = Flask(__name__)
 # Secret key for session cookies
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
-# Enable CORS with credentials so browser can send cookies
-CORS(app, supports_credentials=True)
+# Session cookies for cross-site (Vercel → Railway)
+app.config.update(
+    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SECURE=True,
+)
+# Enable CORS with credentials and restrict to frontend origin
+frontend_origin = os.environ.get('FRONTEND_ORIGIN')  # e.g. https://your-app.vercel.app
+if frontend_origin:
+    CORS(app, supports_credentials=True, resources={r"/*": {"origins": [frontend_origin]}})
+else:
+    # Fallback allows localhost dev; update FRONTEND_ORIGIN in production
+    CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
 
 # ----------------------
 # Logging
