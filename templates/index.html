@@ -121,9 +121,25 @@
       <option value="Math">Math</option>
       <option value="Chemistry">Chemistry</option>
     </select>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <span id="userBadge" style="display:none; font-size:13px; color:#666;"></span>
+      <button id="logoutBtn" style="display:none;" onclick="logout()">Logout</button>
+    </div>
   </div>
 
-  <div id="chatContainer"></div>
+  <div id="authContainer" style="padding:20px;">
+    <div style="max-width:360px; background:#fff; padding:20px; border:1px solid #e0e0e0; border-radius:12px;">
+      <h3 style="margin-top:0;">Login</h3>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <input id="username" placeholder="Username (Avnish, Krish, Ashwanth, swaroop)" style="padding:10px; border:1px solid #ccc; border-radius:8px;" />
+        <input id="password" placeholder="Password" type="password" style="padding:10px; border:1px solid #ccc; border-radius:8px;" />
+        <button onclick="login()" style="padding:10px; border:none; background:#007aff; color:#fff; border-radius:8px; cursor:pointer;">Login</button>
+        <div id="loginError" style="color:#b00020; font-size:13px; display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="chatContainer" style="display:none;"></div>
 
   <div id="inputContainer" style="display:none;">
     <input type="text" id="userInput" placeholder="Type your message..." />
@@ -135,6 +151,56 @@
     const BACKEND_URL = "https://socratic-study-helper-production.up.railway.app";
 
     const chatContainer = document.getElementById('chatContainer');
+    const authContainer = document.getElementById('authContainer');
+    const loginError = document.getElementById('loginError');
+    const userBadge = document.getElementById('userBadge');
+    const logoutBtn = document.getElementById('logoutBtn');
+    async function login() {
+      loginError.style.display = 'none';
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const resp = await fetch(`${BACKEND_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ username, password })
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        authContainer.style.display = 'none';
+        chatContainer.style.display = 'flex';
+        userBadge.textContent = `Signed in as ${data.username}`;
+        userBadge.style.display = 'inline';
+        logoutBtn.style.display = 'inline-block';
+      } else {
+        loginError.textContent = data.error || 'Login failed';
+        loginError.style.display = 'block';
+      }
+    }
+
+    async function logout() {
+      await fetch(`${BACKEND_URL}/logout`, { method: 'POST', credentials: 'include' });
+      userBadge.style.display = 'none';
+      logoutBtn.style.display = 'none';
+      chatContainer.style.display = 'none';
+      authContainer.style.display = 'block';
+      startNewConversation();
+    }
+
+    // On load, check session
+    (async function checkSession(){
+      try {
+        const resp = await fetch(`${BACKEND_URL}/me`, { credentials: 'include' });
+        const data = await resp.json();
+        if (data.authenticated) {
+          authContainer.style.display = 'none';
+          chatContainer.style.display = 'flex';
+          userBadge.textContent = `Signed in as ${data.username}`;
+          userBadge.style.display = 'inline';
+          logoutBtn.style.display = 'inline-block';
+        }
+      } catch (e) {}
+    })();
     const inputContainer = document.getElementById('inputContainer');
     const input = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
@@ -160,6 +226,7 @@
       const response = await fetch(`${BACKEND_URL}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ message, subject: currentSubject })
       });
       const data = await response.json();
@@ -186,6 +253,7 @@
       await fetch(`${BACKEND_URL}/set_subject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ subject })
       });
     }
