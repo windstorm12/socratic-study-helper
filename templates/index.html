@@ -249,6 +249,9 @@
     async function setSubject(subject) {
       if (!subject) return;
       currentSubject = subject;
+      // Clear conversation UI and local array when subject changes
+      chatContainer.innerHTML = '';
+      conversation = [];
       inputContainer.style.display = "flex";
       await fetch(`${BACKEND_URL}/set_subject`, {
         method: 'POST',
@@ -259,7 +262,11 @@
     }
 
     function downloadConversation() {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(conversation, null, 2));
+      const payload = [
+        { meta: { subject: currentSubject || null, exportedAt: new Date().toISOString() } },
+        ...conversation
+      ];
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
       const dlAnchor = document.createElement('a');
       dlAnchor.setAttribute("href", dataStr);
       dlAnchor.setAttribute("download", "conversation.json");
