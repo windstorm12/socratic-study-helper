@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
 from google import genai
 import os
@@ -8,7 +8,10 @@ import logging
 # Flask app
 # ----------------------
 app = Flask(__name__)
-CORS(app)  # <-- enables CORS for all routes
+# Secret key for session cookies
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+# Enable CORS with credentials so browser can send cookies
+CORS(app, supports_credentials=True)
 
 # ----------------------
 # Logging
@@ -18,6 +21,13 @@ logger = logging.getLogger(__name__)
 
 # Log bound PORT on startup
 logger.info(f"Startup: PORT={os.environ.get('PORT')} binding via gunicorn")
+try:
+    # Log registered routes for debugging
+    from werkzeug.routing import Rule
+    routes = [str(rule) for rule in app.url_map.iter_rules()]
+    logger.info(f"Registered routes: {routes}")
+except Exception as e:
+    logger.warning(f"Could not list routes: {e}")
 
 @app.before_request
 def log_request_info():
@@ -82,8 +92,25 @@ def get_answer(user_subject, user_input):
     return ai_answer
 
 # ----------------------
-# Routes
+# Auth utilities and Routes
 # ----------------------
+
+# Hardcoded users
+USERS = {
+    "Avnish": "nerd",
+    "Krish": "gangster",
+    "Ashwanth": "black",
+    "swaroop": "annoying",
+}
+
+def login_required(func):
+    from functools import wraps
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not session.get("authenticated"):
+            return jsonify({"error": "Unauthorized"}), 401
+        return func(*args, **kwargs)
+    return wrapper
 
 @app.route('/')
 def index():
@@ -110,6 +137,7 @@ def debug():
     return jsonify(info), 200
 
 @app.route('/set_subject', methods=['POST'])
+@login_required
 def set_subject():
     global user_subject
     data = request.json
@@ -117,6 +145,7 @@ def set_subject():
     return jsonify({"status": "success", "subject": user_subject})
 
 @app.route('/ask', methods=['POST'])
+@login_required
 def ask():
     global user_subject
     data = request.json
@@ -124,6 +153,29 @@ def ask():
     User_append(user_input)
     ai_answer = get_answer(user_subject, user_input)
     return jsonify({"answer": ai_answer})
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.get_json(silent=True) or {}
+    username = data.get('username', '')
+    password = data.get('password', '')
+    # Validate
+    if username in USERS and USERS[username] == password:
+        session['authenticated'] = True
+        session['username'] = username
+        return jsonify({"ok": True, "username": username})
+    return jsonify({"ok": False, "error": "Invalid credentials"}), 401
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+@app.route('/me', methods=['GET'])
+def me():
+    if session.get('authenticated'):
+        return jsonify({"authenticated": True, "username": session.get('username')})
+    return jsonify({"authenticated": False}), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
