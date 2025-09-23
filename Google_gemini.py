@@ -16,6 +16,9 @@ CORS(app)  # <-- enables CORS for all routes
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Log bound PORT on startup
+logger.info(f"Startup: PORT={os.environ.get('PORT')} binding via gunicorn")
+
 @app.before_request
 def log_request_info():
     logger.info(f"Incoming request: {request.method} {request.path}")
@@ -95,6 +98,16 @@ def health():
 def healthz():
     logger.info("/healthz called")
     return "ok", 200
+
+@app.route('/debug', methods=['GET'])
+def debug():
+    info = {
+        "port": os.environ.get('PORT'),
+        "gemini_api_key_present": bool(os.environ.get('GEMINI_API_KEY')),
+        "working_dir": os.getcwd()
+    }
+    logger.info(f"/debug: {info}")
+    return jsonify(info), 200
 
 @app.route('/set_subject', methods=['POST'])
 def set_subject():
