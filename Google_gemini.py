@@ -7,6 +7,12 @@ import logging
 # ----------------------
 # Flask app
 # ----------------------
+"""
+Ensure logging is initialized before any usage below (e.g., during CORS setup).
+"""
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 # Secret key for session cookies
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -39,7 +45,7 @@ CORS(app, resources=cors_config, supports_credentials=True)
 # Logging
 # ----------------------
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logger
 
 # Log bound PORT on startup
 logger.info(f"Startup: PORT={os.environ.get('PORT')} binding via gunicorn")
