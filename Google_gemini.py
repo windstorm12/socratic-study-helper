@@ -24,7 +24,7 @@ app.config.update(
 # Enable CORS with credentials and restrict to frontend origin(s)
 # Support multiple origins via comma-separated FRONTEND_ORIGIN env
 raw_frontend_origins = os.environ.get('FRONTEND_ORIGIN', '')  # e.g. "https://app.vercel.app,https://preview.vercel.app"
-allowed_origins = [o.strip() for o in raw_frontend_origins.split(',') if o.strip()]
+allowed_origins = [o.strip().lstrip('=') for o in raw_frontend_origins.split(',') if o.strip()]
 if not allowed_origins:
     allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
