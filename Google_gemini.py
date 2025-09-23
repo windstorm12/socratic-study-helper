@@ -15,14 +15,18 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='None',
     SESSION_COOKIE_SECURE=True,
 )
-# Enable CORS with credentials and restrict to frontend origin
-frontend_origin = os.environ.get('FRONTEND_ORIGIN')  # e.g. https://your-app.vercel.app
+# Enable CORS with credentials and restrict to frontend origin(s)
+# Support multiple origins via comma-separated FRONTEND_ORIGIN env
+raw_frontend_origins = os.environ.get('FRONTEND_ORIGIN', '')  # e.g. "https://app.vercel.app,https://preview.vercel.app"
+allowed_origins = [o.strip() for o in raw_frontend_origins.split(',') if o.strip()]
+if not allowed_origins:
+    allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+logger.info(f"CORS allowed origins: {allowed_origins}")
+
 cors_config = {
     r"/*": {
-        "origins": [frontend_origin] if frontend_origin else [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000"
-        ],
+        "origins": allowed_origins,
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type"],
         "expose_headers": ["Set-Cookie"],
