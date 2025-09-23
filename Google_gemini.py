@@ -128,10 +128,10 @@ def get_answer(user_subject, user_input):
 
 # Hardcoded users
 USERS = {
-    "Avnish": "nerd",
-    "Krish": "gangster",
-    "Ashwanth": "black",
-    "swaroop": "annoying",
+    "Avnish": "Nerd",
+    "Krish": "Newbie",
+    "Ashwanth": "Black Monkey",
+    "swaroop": "Stupid",
 }
 
 def login_required(func):
@@ -171,8 +171,11 @@ def debug():
 @login_required
 def set_subject():
     global user_subject
+    global conversation
     data = request.json
     user_subject = data.get('subject', '')
+    # Reset server-side conversation when subject changes
+    conversation = []
     return jsonify({"status": "success", "subject": user_subject})
 
 @app.route('/ask', methods=['POST'])
