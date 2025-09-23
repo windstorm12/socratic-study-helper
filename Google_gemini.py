@@ -73,6 +73,10 @@ def index():
 def health():
     return jsonify({"status": "ok"}), 200
 
+@app.route('/healthz', methods=['GET'])
+def healthz():
+    return "ok", 200
+
 @app.route('/set_subject', methods=['POST'])
 def set_subject():
     global user_subject
