@@ -17,11 +17,19 @@ app.config.update(
 )
 # Enable CORS with credentials and restrict to frontend origin
 frontend_origin = os.environ.get('FRONTEND_ORIGIN')  # e.g. https://your-app.vercel.app
-if frontend_origin:
-    CORS(app, supports_credentials=True, resources={r"/*": {"origins": [frontend_origin]}})
-else:
-    # Fallback allows localhost dev; update FRONTEND_ORIGIN in production
-    CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
+cors_config = {
+    r"/*": {
+        "origins": [frontend_origin] if frontend_origin else [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000"
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "expose_headers": ["Set-Cookie"],
+        "supports_credentials": True,
+    }
+}
+CORS(app, resources=cors_config, supports_credentials=True)
 
 # ----------------------
 # Logging
