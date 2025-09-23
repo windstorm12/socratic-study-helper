@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from google import genai
 import os
+import logging
 
 # ----------------------
 # Flask app
@@ -10,15 +11,30 @@ app = Flask(__name__)
 CORS(app)  # <-- enables CORS for all routes
 
 # ----------------------
-# Configure AI
+# Logging
 # ----------------------
-# Initialize the client with your API key from environment variable
-api_key = os.environ.get('GEMINI_API_KEY')
-if not api_key:
-    raise ValueError("GEMINI_API_KEY environment variable is required")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-client = genai.Client(api_key=api_key)
+@app.before_request
+def log_request_info():
+    logger.info(f"Incoming request: {request.method} {request.path}")
+
+# ----------------------
+# Configure AI (lazy init)
+# ----------------------
+_genai_client = None
 model_name = "gemini-1.5-flash"  # update if needed
+
+def get_genai_client():
+    global _genai_client
+    if _genai_client is None:
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            # Delay failure until first AI usage; health and static routes should work
+            raise ValueError("GEMINI_API_KEY environment variable is required")
+        _genai_client = genai.Client(api_key=api_key)
+    return _genai_client
 
 # ----------------------
 # Global variables
@@ -52,7 +68,8 @@ def get_answer(user_subject, user_input):
     You can only generate 1 question
     The user is talking about {user_subject} and they just said {user_input}, the conversation history is {conversation}
     """
-    # Generate AI response using the new Client
+    # Generate AI response using the client
+    client = get_genai_client()
     response = client.models.generate_content(
         model=model_name,
         contents=prompt
@@ -71,10 +88,12 @@ def index():
 
 @app.route('/health', methods=['GET'])
 def health():
+    logger.info("/health called")
     return jsonify({"status": "ok"}), 200
 
 @app.route('/healthz', methods=['GET'])
 def healthz():
+    logger.info("/healthz called")
     return "ok", 200
 
 @app.route('/set_subject', methods=['POST'])
