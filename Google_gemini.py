@@ -68,6 +68,45 @@ def log_request_info():
     logger.info(f"Incoming request: {request.method} {request.path}")
 
 # ----------------------
+# Optional: Initialize database schema on startup
+# ----------------------
+def _db_init_schema_if_needed():
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return
+    conn = None
+    try:
+        conn = psycopg.connect(dsn, connect_timeout=5)
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS messages (
+                      id SERIAL PRIMARY KEY,
+                      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                      username TEXT,
+                      subject TEXT,
+                      session_id TEXT,
+                      sender TEXT CHECK (sender IN ('user','ai')) NOT NULL,
+                      text TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+                    """
+                )
+        logger.info("DB schema ensured (messages table)")
+    except Exception as e:
+        logger.warning(f"DB schema init skipped (reason: {e})")
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+# Ensure schema once at import time
+_db_init_schema_if_needed()
+
+# ----------------------
 # Configure AI (lazy init)
 # ----------------------
 _genai_client = None
