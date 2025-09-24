@@ -6,6 +6,9 @@ import logging
 import base64
 import hashlib
 from cryptography.fernet import Fernet, InvalidToken
+import psycopg
+import csv
+from io import StringIO
 
 # ----------------------
 # Flask app
@@ -91,9 +94,11 @@ user_subject = ""
 # ----------------------
 def User_append(user_input):
     conversation.append({"role": "user", "content": user_input})
+    _db_log_message(sender="user", text=user_input)
 
 def AI_append(ai_resp):
     conversation.append({"role": "Socrates", "content": ai_resp})
+    _db_log_message(sender="ai", text=ai_resp)
 
 def get_answer(user_subject, user_input):
     prompt = f"""
@@ -121,6 +126,77 @@ def get_answer(user_subject, user_input):
     ai_answer = response.text
     AI_append(ai_answer)
     return ai_answer
+# ----------------------
+# Database helpers
+# ----------------------
+
+def _get_db_conn():
+    dsn = os.environ.get('DATABASE_URL')
+    if not dsn:
+        return None
+    try:
+        return psycopg.connect(dsn, connect_timeout=5)
+    except Exception as e:
+        logger.warning(f"DB connect failed: {e}")
+        return None
+
+def _db_log_message(sender: str, text: str):
+    conn = _get_db_conn()
+    if conn is None:
+        return
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO messages (username, subject, session_id, sender, text)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        session.get('username'),
+                        user_subject or None,
+                        request.cookies.get('session'),
+                        sender,
+                        text,
+                    ),
+                )
+    except Exception as e:
+        logger.warning(f"DB insert failed: {e}")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+def _db_export_all_as_csv():
+    conn = _get_db_conn()
+    if conn is None:
+        return None
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT created_at, username, subject, session_id, sender, text
+                    FROM messages
+                    ORDER BY created_at ASC
+                    """
+                )
+                rows = cur.fetchall()
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["created_at", "username", "subject", "session_id", "sender", "text"])
+        for r in rows:
+            writer.writerow(r)
+        return output.getvalue()
+    except Exception as e:
+        logger.warning(f"DB export failed: {e}")
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 # ----------------------
 # Auth utilities and Routes
@@ -248,6 +324,27 @@ def decrypt_payload():
         return Response(response=plaintext, status=200, mimetype='application/json')
     except InvalidToken:
         return jsonify({"error": "Invalid or corrupted ciphertext"}), 400
+
+@app.route('/admin/export', methods=['GET'])
+def admin_export():
+    token = request.args.get('token')
+    expected = os.environ.get('ADMIN_TOKEN')
+    if not expected or token != expected:
+        return jsonify({"error": "Forbidden"}), 403
+    fmt = (request.args.get('format') or 'csv').lower()
+    if fmt != 'csv':
+        return jsonify({"error": "Only csv supported"}), 400
+    data = _db_export_all_as_csv()
+    if data is None:
+        return jsonify({"error": "Export unavailable"}), 503
+    from flask import Response
+    return Response(
+        data,
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': 'attachment; filename="conversations.csv"'
+        }
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
