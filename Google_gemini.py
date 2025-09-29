@@ -24,8 +24,8 @@ if not allowed_origins:
 cors_config = {
     r"/*": {
         "origins": allowed_origins,
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
+        "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
         "expose_headers": ["Set-Cookie"],
         "supports_credentials": True,
     }
@@ -97,6 +97,9 @@ def login_required(func):
     from functools import wraps
     @wraps(func)
     def wrapper(*args, **kwargs):
+        # Allow OPTIONS requests to pass through for CORS preflight
+        if request.method == 'OPTIONS':
+            return func(*args, **kwargs)
         if not session.get("authenticated"):
             return jsonify({"error": "Unauthorized"}), 401
         return func(*args, **kwargs)
@@ -129,19 +132,30 @@ def debug():
     logger.info(f"/debug: {info}")
     return jsonify(info), 200
 
-@app.route('/set_subject', methods=['POST'])
+@app.route('/set_subject', methods=['POST', 'OPTIONS'])
 @login_required
 def set_subject():
-    global user_subject
-    global conversation
-    data = request.json
-    user_subject = data.get('subject', '')
-    conversation = []
-    return jsonify({"status": "success", "subject": user_subject})
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        global user_subject
+        global conversation
+        data = request.json
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        user_subject = data.get('subject', '')
+        conversation = []
+        logger.info(f"Subject set to: {user_subject}")
+        return jsonify({"status": "success", "subject": user_subject})
+    except Exception as e:
+        logger.error(f"Error in set_subject: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
-@app.route('/ask', methods=['POST'])
+@app.route('/ask', methods=['POST', 'OPTIONS'])
 @login_required
 def ask():
+    if request.method == 'OPTIONS':
+        return '', 200
     global user_subject
     data = request.json
     user_input = data.get('message', '')
@@ -149,8 +163,10 @@ def ask():
     ai_answer = get_answer(user_subject, user_input)
     return jsonify({"answer": ai_answer})
 
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        return '', 200
     data = request.get_json(silent=True) or {}
     username = data.get('username', '')
     password = data.get('password', '')
@@ -160,8 +176,10 @@ def login():
         return jsonify({"ok": True, "username": username})
     return jsonify({"ok": False, "error": "Invalid credentials"}), 401
 
-@app.route('/logout', methods=['POST'])
+@app.route('/logout', methods=['POST', 'OPTIONS'])
 def logout():
+    if request.method == 'OPTIONS':
+        return '', 200
     session.clear()
     return jsonify({"ok": True})
 
@@ -170,6 +188,17 @@ def me():
     if session.get('authenticated'):
         return jsonify({"authenticated": True, "username": session.get('username')})
     return jsonify({"authenticated": False}), 200
+
+@app.route('/test', methods=['GET', 'POST', 'OPTIONS'])
+def test():
+    if request.method == 'OPTIONS':
+        return '', 200
+    return jsonify({
+        "status": "ok", 
+        "method": request.method,
+        "headers": dict(request.headers),
+        "cors_working": True
+    }), 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
