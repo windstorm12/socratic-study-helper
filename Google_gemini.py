@@ -110,7 +110,7 @@ _db_init_schema_if_needed()
 # Configure AI (lazy init)
 # ----------------------
 _genai_client = None
-model_name = "gemini-1.5-flash"  # update if needed
+model_name = "gemini-2.5-flash"  # updated to available model name
 
 def get_genai_client():
     global _genai_client
@@ -277,7 +277,10 @@ def debug():
     info = {
         "port": os.environ.get('PORT'),
         "gemini_api_key_present": bool(os.environ.get('GEMINI_API_KEY')),
-        "working_dir": os.getcwd()
+        "working_dir": os.getcwd(),
+        "frontend_origins": allowed_origins,
+        "database_url_present": bool(os.environ.get('DATABASE_URL')),
+        "secret_key_present": bool(os.environ.get('SECRET_KEY'))
     }
     logger.info(f"/debug: {info}")
     return jsonify(info), 200
