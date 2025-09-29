@@ -90,7 +90,9 @@ USERS = {
     "Avnish": "Nerd",
     "Krish": "Newbie",
     "Ashwanth": "Black Monkey",
-    "swaroop": "Stupid",
+    "Swaroop": "Stupid",
+    "Anuj": "SmartGuy",
+    "LernerClass": "12345",
 }
 
 def login_required(func):
