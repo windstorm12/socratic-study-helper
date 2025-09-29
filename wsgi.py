@@ -1,6 +1,7 @@
 # Simple Flask app for Railway deployment
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
+from google import genai
 import os
 import logging
 
@@ -24,8 +25,8 @@ if not allowed_origins:
 cors_config = {
     r"/*": {
         "origins": allowed_origins,
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"],
+        "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
         "expose_headers": ["Set-Cookie"],
         "supports_credentials": True,
     }
@@ -34,6 +35,56 @@ CORS(app, resources=cors_config, supports_credentials=True)
 
 # Logging
 logger.info(f"Startup: PORT={os.environ.get('PORT')} binding via gunicorn")
+
+# AI Configuration
+_genai_client = None
+model_name = "gemini-2.5-flash"
+
+def get_genai_client():
+    global _genai_client
+    if _genai_client is None:
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY environment variable is required")
+        _genai_client = genai.Client(api_key=api_key)
+    return _genai_client
+
+# Global variables
+conversation = []
+user_subject = ""
+
+# Helper functions
+def User_append(user_input):
+    conversation.append({"role": "user", "content": user_input})
+
+def AI_append(ai_resp):
+    conversation.append({"role": "Socrates", "content": ai_resp})
+
+def get_answer(user_subject, user_input):
+    prompt = f"""
+    You are Socrates, a master teacher guiding a student through deep critical thinking. 
+    Your goal is to make the student reason carefully, analyze, and reflect, not just recall facts. Each of your question should help identify
+    the learning gaps the user has. If you see any incorrect explanation your question should indirectly convey that the user might be incorrect.
+    If you notice any incorrect explanations, ask the user some critical thinking questions that challenge their understanding. If the user 
+    is not able to answer the question, then help the user with a bit easier question and a hint.
+    Ask questions that: 
+    - Explore causes, consequences, and relationships. 
+    - Compare and contrast ideas. 
+    - Consider hypothetical scenarios or exceptions. 
+    - Encourage evaluation and reasoning. 
+    Stay strictly within the scope of the teaching material provided. 
+    Do not give direct answers. Be curious, patient, and encouraging.
+    You can only generate 1 question
+    The user is talking about {user_subject} and they just said {user_input}, the conversation history is {conversation}
+    """
+    client = get_genai_client()
+    response = client.models.generate_content(
+        model=model_name,
+        contents=prompt
+    )
+    ai_answer = response.text
+    AI_append(ai_answer)
+    return ai_answer
 
 # Hardcoded users
 USERS = {
@@ -47,6 +98,9 @@ def login_required(func):
     from functools import wraps
     @wraps(func)
     def wrapper(*args, **kwargs):
+        # Allow OPTIONS requests to pass through for CORS preflight
+        if request.method == 'OPTIONS':
+            return func(*args, **kwargs)
         if not session.get("authenticated"):
             return jsonify({"error": "Unauthorized"}), 401
         return func(*args, **kwargs)
@@ -79,8 +133,10 @@ def debug():
     logger.info(f"/debug: {info}")
     return jsonify(info), 200
 
-@app.route('/login', methods=['POST'])
+@app.route('/login', methods=['POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        return '', 200
     data = request.get_json(silent=True) or {}
     username = data.get('username', '')
     password = data.get('password', '')
@@ -90,16 +146,60 @@ def login():
         return jsonify({"ok": True, "username": username})
     return jsonify({"ok": False, "error": "Invalid credentials"}), 401
 
-@app.route('/logout', methods=['POST'])
+@app.route('/logout', methods=['POST', 'OPTIONS'])
 def logout():
+    if request.method == 'OPTIONS':
+        return '', 200
     session.clear()
     return jsonify({"ok": True})
+
+@app.route('/set_subject', methods=['POST', 'OPTIONS'])
+@login_required
+def set_subject():
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        global user_subject
+        global conversation
+        data = request.json
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        user_subject = data.get('subject', '')
+        conversation = []
+        logger.info(f"Subject set to: {user_subject}")
+        return jsonify({"status": "success", "subject": user_subject})
+    except Exception as e:
+        logger.error(f"Error in set_subject: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/ask', methods=['POST', 'OPTIONS'])
+@login_required
+def ask():
+    if request.method == 'OPTIONS':
+        return '', 200
+    global user_subject
+    data = request.json
+    user_input = data.get('message', '')
+    User_append(user_input)
+    ai_answer = get_answer(user_subject, user_input)
+    return jsonify({"answer": ai_answer})
 
 @app.route('/me', methods=['GET'])
 def me():
     if session.get('authenticated'):
         return jsonify({"authenticated": True, "username": session.get('username')})
     return jsonify({"authenticated": False}), 200
+
+@app.route('/test', methods=['GET', 'POST', 'OPTIONS'])
+def test():
+    if request.method == 'OPTIONS':
+        return '', 200
+    return jsonify({
+        "status": "ok", 
+        "method": request.method,
+        "headers": dict(request.headers),
+        "cors_working": True
+    }), 200
 
 # Expose as "app" for gunicorn's wsgi entrypoint
 
