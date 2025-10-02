@@ -75,6 +75,7 @@ def get_answer(user_subject, user_input):
     Do not give direct answers. Be curious, patient, and encouraging.
     You can only generate 1 question
     The user is talking about {user_subject} and they just said {user_input}, the conversation history is {conversation}
+    IF you think the user fully understands the topic, return to the user's first message in {conversation} and move on to the next part in the user's message
     """
     client = get_genai_client()
     response = client.models.generate_content(
@@ -90,7 +91,9 @@ USERS = {
     "Avnish": "Nerd",
     "Krish": "Newbie",
     "Ashwanth": "Black Monkey",
-    "swaroop": "Stupid",
+    "Swaroop": "Stupid",
+    "Anuj": "SmartGuy",
+    "LernerClass": "12345",
 }
 
 def login_required(func):
