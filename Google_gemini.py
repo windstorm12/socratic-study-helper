@@ -51,6 +51,7 @@ def get_genai_client():
 # Global variables
 conversation = []
 user_subject = ""
+first_message = None  # Variable to store the first message
 
 # Helper functions
 def User_append(user_input):
@@ -62,6 +63,7 @@ def AI_append(ai_resp):
 def get_answer(user_subject, user_input):
     prompt = f"""
     You are Socrates, a master teacher guiding a student through deep critical thinking. 
+    Any question you ask should stay within the scope of the user's message, so make sure you do not ask something 
     Your goal is to make the student reason carefully, analyze, and reflect, not just recall facts. Each of your question should help identify
     the learning gaps the user has. If you see any incorrect explanation your question should indirectly convey that the user might be incorrect.
     If you notice any incorrect explanations, ask the user some critical thinking questions that challenge their understanding. If the user 
@@ -75,6 +77,8 @@ def get_answer(user_subject, user_input):
     Do not give direct answers. Be curious, patient, and encouraging.
     You can only generate 1 question
     The user is talking about {user_subject} and they just said {user_input}, the conversation history is {conversation}
+    Once you feel like the user has understood the topic well, return to the user's first message which is {first_message} and move on to the next topic that is presented in the message
+    BUT only move on if you are 100% sure the user has understood the topic well. If you are not sure, keep asking more questions about the current topic.
     """
     client = get_genai_client()
     response = client.models.generate_content(
@@ -89,9 +93,20 @@ def get_answer(user_subject, user_input):
 USERS = {
     "Avnish": "Nerd",
     "Krish": "Newbie",
-    "Ashwanth": "Black Monkey",
-    "swaroop": "Stupid",
+    "Ashwanth": "Chipat",
+    "Swaroop": "Stupid",
+    "Windstorm": "AlanMcBob",
+    "Ms.Lerner": "Biology",
+    "Ms.McCracken" : "Chemistry"
 }
+
+def handle_user_message(message):
+    global first_message
+    if first_message is None:
+        first_message = message  # Record the first message
+        print(f"First message recorded: {first_message}")
+    else:
+        print(f"User message: {message}")
 
 def login_required(func):
     from functools import wraps
@@ -159,6 +174,7 @@ def ask():
     global user_subject
     data = request.json
     user_input = data.get('message', '')
+    handle_user_message(user_input)
     User_append(user_input)
     ai_answer = get_answer(user_subject, user_input)
     return jsonify({"answer": ai_answer})
