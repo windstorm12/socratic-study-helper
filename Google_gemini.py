@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
-import generativeai_for_python3_8 as genai
+from google import genai
 import os
 import logging
 
@@ -45,8 +45,7 @@ def get_genai_client():
         api_key = os.environ.get('GEMINI_API_KEY')
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
-        genai.configure(api_key=api_key)
-        _genai_client = genai
+        _genai_client = genai.Client(api_key=api_key)
     return _genai_client
 
 # Global variables
@@ -82,8 +81,10 @@ def get_answer(user_subject, user_input):
     BUT only move on if you are 100% sure the user has understood the topic well. If you are not sure, keep asking more questions about the current topic.
     """
     client = get_genai_client()
-    model = client.GenerativeModel(model_name)
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model=model_name,
+        contents=prompt
+    )
     ai_answer = response.text
     AI_append(ai_answer)
     return ai_answer
