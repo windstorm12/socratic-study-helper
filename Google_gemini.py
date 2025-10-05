@@ -94,12 +94,8 @@ def get_answer(user_subject, user_input):
 USERS = {
     "Avnish": "Nerd",
     "Krish": "Newbie",
-    "Ashwanth": "Black Monkey",
     "Swaroop": "Stupid",
     "Anuj": "SmartGuy",
-    "LernerClass": "12345",
-    "Ashwanth": "Chipat",
-    "Swaroop": "Stupid",
     "Windstorm": "AlanMcBob",
     "Ms.Lerner": "Biology",
     "Ms.McCracken" : "Chemistry"
