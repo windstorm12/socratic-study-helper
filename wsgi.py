@@ -90,8 +90,11 @@ def get_answer(user_subject, user_input):
 USERS = {
     "Avnish": "Nerd",
     "Krish": "Newbie",
-    "Ashwanth": "Black Monkey",
-    "swaroop": "Stupid",
+    "Swaroop": "Stupid",
+    "Anuj": "SmartGuy",
+    "Windstorm": "AlanMcBob",
+    "Ms.Lerner": "Biology",
+    "Ms.McCracken": "Chemistry",
 }
 
 def login_required(func):
