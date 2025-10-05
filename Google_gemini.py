@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
-import google.generativeai as genai
+import generativeai_for_python3_8 as genai
 import os
 import logging
 
