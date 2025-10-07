@@ -112,8 +112,6 @@
 
   <div id="topBar">
     <button onclick="startNewConversation()">New Conversation</button>
-    <button onclick="loadConversation()">Load Conversation</button>
-    <button onclick="downloadConversation()">Download Conversation</button>
     <select id="subjectSelect" onchange="setSubject(this.value)">
       <option value="">Select Subject</option>
       <option value="Biology">Biology</option>
@@ -261,19 +259,7 @@
       });
     }
 
-    function downloadConversation() {
-      const payload = [
-        { meta: { subject: currentSubject || null, exportedAt: new Date().toISOString() } },
-        ...conversation
-      ];
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
-      const dlAnchor = document.createElement('a');
-      dlAnchor.setAttribute("href", dataStr);
-      dlAnchor.setAttribute("download", "conversation.json");
-      document.body.appendChild(dlAnchor);
-      dlAnchor.click();
-      dlAnchor.remove();
-    }
+    // loadConversation and downloadConversation removed per requirements
   </script>
 
 </body>
