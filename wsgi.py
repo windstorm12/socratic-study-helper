@@ -94,7 +94,7 @@ USERS = {
     "Anuj": "SmartGuy",
     "Windstorm": "AlanMcBob",
     "Ms.Lerner": "Biology",
-    "Ms.McCracken" : "Chemistry"
+    "Ms.McCracken" : "Chemistry",
 }
 
 def login_required(func):
