@@ -112,7 +112,11 @@ def login_required(func):
 # Routes
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template(
+        'index.html',
+        contact_text=os.environ.get('CONTACT_TEXT', 'Contact'),
+        contact_url=os.environ.get('CONTACT_URL', '')
+    )
 
 @app.route('/health', methods=['GET'])
 def health():

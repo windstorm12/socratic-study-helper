@@ -120,8 +120,24 @@
       <option value="Chemistry">Chemistry</option>
     </select>
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <a id="contactLink" href="#" target="_blank" style="font-size:13px; color:#007aff; text-decoration:none; display:none;"></a>
       <span id="userBadge" style="display:none; font-size:13px; color:#666;"></span>
       <button id="logoutBtn" style="display:none;" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div id="introContainer" style="padding:24px; display:block;">
+    <div style="max-width:720px; margin:0 auto; background:#fff; padding:24px; border:1px solid #e0e0e0; border-radius:12px;">
+      <h2 style="margin-top:0;">Welcome to Socratic AI</h2>
+      <p style="color:#444;">This AI uses a Socratic approach to guide your learning. It will ask probing questions to uncover misunderstandings and help you reason your way to deeper understanding. It won’t directly give answers; instead, it nudges you with questions and hints.</p>
+      <h3>How to use</h3>
+      <ul style="color:#444; line-height:1.6;">
+        <li>Select a subject from the dropdown.</li>
+        <li>Log in with your provided classroom username and password.</li>
+        <li>Ask your question or describe what you’re studying.</li>
+        <li>Answer the AI’s questions thoughtfully; it adapts based on your responses.</li>
+      </ul>
+      <button onclick="proceedToLogin()" style="padding:10px 16px; border:none; background:#007aff; color:#fff; border-radius:8px; cursor:pointer;">Get Started</button>
     </div>
   </div>
 
@@ -150,9 +166,29 @@
 
     const chatContainer = document.getElementById('chatContainer');
     const authContainer = document.getElementById('authContainer');
+    const introContainer = document.getElementById('introContainer');
     const loginError = document.getElementById('loginError');
     const userBadge = document.getElementById('userBadge');
     const logoutBtn = document.getElementById('logoutBtn');
+    const contactLink = document.getElementById('contactLink');
+
+    // Contact link content comes from server-side templating
+    const CONTACT_TEXT = "{{ contact_text|default('Contact') }}";
+    const CONTACT_URL = "{{ contact_url|default('') }}";
+    if (CONTACT_URL) {
+      contactLink.textContent = CONTACT_TEXT || 'Contact';
+      contactLink.href = CONTACT_URL;
+      contactLink.style.display = 'inline';
+    }
+
+    // Initial visibility: show intro, hide auth/chat until proceed
+    authContainer.style.display = 'none';
+    chatContainer.style.display = 'none';
+
+    function proceedToLogin() {
+      introContainer.style.display = 'none';
+      authContainer.style.display = 'block';
+    }
     async function login() {
       loginError.style.display = 'none';
       const username = document.getElementById('username').value.trim();
@@ -165,6 +201,7 @@
       });
       const data = await resp.json();
       if (data.ok) {
+        introContainer.style.display = 'none';
         authContainer.style.display = 'none';
         chatContainer.style.display = 'flex';
         userBadge.textContent = `Signed in as ${data.username}`;
@@ -191,6 +228,7 @@
         const resp = await fetch(`${BACKEND_URL}/me`, { credentials: 'include' });
         const data = await resp.json();
         if (data.authenticated) {
+          introContainer.style.display = 'none';
           authContainer.style.display = 'none';
           chatContainer.style.display = 'flex';
           userBadge.textContent = `Signed in as ${data.username}`;
