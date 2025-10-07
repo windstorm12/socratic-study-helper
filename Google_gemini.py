@@ -98,7 +98,8 @@ USERS = {
     "Anuj": "SmartGuy",
     "Windstorm": "AlanMcBob",
     "Ms.Lerner": "Biology",
-    "Ms.McCracken" : "Chemistry"
+    "Ms.McCracken" : "Chemistry",
+    "Hello" : "World"
 }
 
 def handle_user_message(message):
