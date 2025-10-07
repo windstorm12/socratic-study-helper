@@ -119,10 +119,17 @@
       <option value="Math">Math</option>
       <option value="Chemistry">Chemistry</option>
     </select>
+    <button onclick="showIntro()">How to use</button>
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-      <a id="contactLink" href="#" target="_blank" style="font-size:13px; color:#007aff; text-decoration:none; display:none;"></a>
       <span id="userBadge" style="display:none; font-size:13px; color:#666;"></span>
       <button id="logoutBtn" style="display:none;" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div id="contactSection" style="padding:10px 20px; background:#fff; border-bottom:1px solid #e0e0e0; display:block;">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="color:#444;">Community:</span>
+      <a id="discordInvite" href="https://discord.gg/Bv6qQTk25X" target="_blank" rel="noopener noreferrer" style="color:#5865F2; text-decoration:none; font-weight:600;">Join our Discord</a>
     </div>
   </div>
 
@@ -170,16 +177,7 @@
     const loginError = document.getElementById('loginError');
     const userBadge = document.getElementById('userBadge');
     const logoutBtn = document.getElementById('logoutBtn');
-    const contactLink = document.getElementById('contactLink');
-
-    // Contact link content comes from server-side templating
-    const CONTACT_TEXT = "{{ contact_text|default('Contact') }}";
-    const CONTACT_URL = "{{ contact_url|default('') }}";
-    if (CONTACT_URL) {
-      contactLink.textContent = CONTACT_TEXT || 'Contact';
-      contactLink.href = CONTACT_URL;
-      contactLink.style.display = 'inline';
-    }
+    // Discord link is hardcoded in the DOM to avoid accidental overrides
 
     // Initial visibility: show intro, hide auth/chat until proceed
     authContainer.style.display = 'none';
@@ -188,6 +186,12 @@
     function proceedToLogin() {
       introContainer.style.display = 'none';
       authContainer.style.display = 'block';
+    }
+    function showIntro() {
+      chatContainer.style.display = 'none';
+      authContainer.style.display = 'none';
+      introContainer.style.display = 'block';
+      loginError.style.display = 'none';
     }
     async function login() {
       loginError.style.display = 'none';
