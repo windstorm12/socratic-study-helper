@@ -117,22 +117,43 @@ def _extract_json_block(text: str) -> str:
         return text[start:end+1]
     return text
 
-def _generate_math_set(seed_prompt: str, allow_harder: bool):
-    level_note = "make them slightly harder than the seed" if allow_harder else "keep them at the same difficulty as the seed"
+def _get_decimal_places() -> int:
+    try:
+        return max(0, int(os.environ.get('MATH_DECIMALS', '2')))
+    except Exception:
+        return 2
+
+def _normalize_numeric_string(value: float, places: int) -> str:
+    s = f"{round(value, places):.{places}f}"
+    if '.' in s:
+        s = s.rstrip('0').rstrip('.')
+    return s
+
+def _generate_math_set(concept: str, allow_harder: bool):
+    if _wants_no_harder(concept):
+        level_note = "keep them at the same difficulty as the previous set"
+    else:
+        level_note = "gradually increase difficulty from 1 (easiest) to 10 (hardest) and be slightly harder overall"
     prompt = f"""
-    Create exactly 10 math practice problems about the SAME underlying concept as:
-    "{seed_prompt}"
-    and {level_note}.
-    Output STRICT JSON with this schema:
+    You are a math question generator.
+    Create exactly 10 unique practice problems testing the SAME underlying concept as:
+    "{concept}"
+
+    Level note: {level_note}.
+
+    Rules:
+    - The 10 problems must gradually increase in difficulty from 1 (easiest) to 10 (hardest).
+    - Include a mix of numeric, word-based, and symbolic problems when relevant.
+    - If numeric, simplify answers. If symbolic, express answers cleanly (no long fractions or decimals).
+    - Output STRICT JSON:
     {{
       "problems": [
-        {{ "number": 1, "question": "...", "answer": "..." }},
-        ... up to 10 problems ...
+        {{"number": 1, "question": "...", "answer": "..." }},
+        ...
+        {{"number": 10, "question": "...", "answer": "..." }}
       ]
     }}
-    - "answer" should be concise. If numeric, provide a simplified numeric value.
-    - Do not include any extra commentary or code fences.
-    - Each problem should be self-contained and concise so it can be listed one per line in a chat UI.
+    - No explanations, commentary, or markdown.
     """
     client = get_genai_client()
     response = client.models.generate_content(model=model_name, contents=prompt)
@@ -141,14 +162,30 @@ def _generate_math_set(seed_prompt: str, allow_harder: bool):
         json_text = _extract_json_block(raw)
         data = json.loads(json_text)
         problems = data.get("problems", [])
+    except json.JSONDecodeError:
+        logger.warning("Model returned bad JSON. Attempting recovery.")
+        import re
+        problems = []
+        matches = re.findall(r"\d+\).*?answer.*?:.*?(?=\n\d+\)|$)", raw, re.S | re.I)
+        for i, m in enumerate(matches[:10], start=1):
+            q_match = re.search(r"\d+\)\s*(.*?)\s*answer", m, re.I)
+            a_match = re.search(r"answer.*?:\s*(.*)", m, re.I)
+            if q_match and a_match:
+                problems.append({"number": i, "question": q_match.group(1).strip(), "answer": a_match.group(1).strip()})
     except Exception:
         problems = []
     formatted = []
+    places = _get_decimal_places()
     for idx, p in enumerate(problems[:10], start=1):
         q = p.get("question") if isinstance(p, dict) else None
         a = p.get("answer") if isinstance(p, dict) else None
         if q and a is not None:
-            formatted.append({"number": idx, "question": q, "answer": str(a).strip()})
+            try:
+                num = float(str(a).replace(',', '').strip())
+                a_str = _normalize_numeric_string(num, places)
+            except Exception:
+                a_str = str(a).strip()
+            formatted.append({"number": idx, "question": q, "answer": a_str})
     return formatted
 
 def _parse_user_answers(text: str) -> dict:
@@ -168,13 +205,45 @@ def _parse_user_answers(text: str) -> dict:
     return answers
 
 def _answers_equal(expected: str, given: str) -> bool:
+    import re
+    def to_number_or_none(s: str):
+        if s is None:
+            return None
+        m = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", str(s))
+        if m:
+            try:
+                return float(m.group(0).replace(",", ""))
+            except Exception:
+                return None
+        return None
+
+    en = to_number_or_none(expected)
+    gn = to_number_or_none(given)
+    if en is not None and gn is not None:
+        places = _get_decimal_places()
+        return _normalize_numeric_string(en, places) == _normalize_numeric_string(gn, places)
+
+    def clean(s: str) -> str:
+        s = str(s).strip()
+        return s
+
+    return clean(expected) == clean(given)
+
+def _generate_hint(question: str, correct_answer: str) -> str:
     try:
-        e = float(str(expected).replace(",", "").strip())
-        g = float(str(given).replace(",", "").strip())
-        return abs(e - g) <= max(1e-6, 1e-3 * max(abs(e), 1.0))
+        client = get_genai_client()
+        prompt = f"""
+        The student answered a math problem incorrectly.
+        Provide a short, encouraging hint (1–2 sentences) that guides them toward the solution
+        without revealing the final answer. Keep it concise and actionable.
+
+        Question: {question}
+        Correct Answer: {correct_answer}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        return (response.text or "Check your setup and isolate the variable step by step.").strip()
     except Exception:
-        pass
-    return str(expected).strip().lower() == str(given).strip().lower()
+        return "Re-check your steps and isolate the unknown carefully before substituting."
 
 def _looks_like_answers(text: str) -> bool:
     import re
@@ -297,10 +366,12 @@ def ask():
         math_state = session.get('math_mode') or {}
         if not math_state.get('generated'):
             allow_harder = not _wants_no_harder(user_input)
-            problems = _generate_math_set(user_input, allow_harder)
+            concept = (session.get('math_mode') or {}).get('concept') or user_input
+            problems = _generate_math_set(concept, allow_harder)
             math_state['problems'] = problems
             math_state['generated'] = True
             math_state['allow_harder'] = allow_harder
+            math_state['concept'] = concept
             session['math_mode'] = math_state
             if problems:
                 lines = [f"{p['number']}) {p['question']}" for p in problems]
@@ -312,12 +383,26 @@ def ask():
                 response_text = "I couldn't generate problems right now. Please rephrase your question."
             AI_append(response_text)
             return jsonify({"answer": response_text})
+        if user_input.strip().lower() == 'retry' and math_state.get('pending'):
+            retry_lines = [f"{p['number']}) {p['question']}" for p in math_state['pending']]
+            response_text = "Let's try these again. Remember: short, clear steps.\n\n" + "\n".join(retry_lines)
+            AI_append(response_text)
+            return jsonify({"answer": response_text})
+        if user_input.strip().lower() in ('show answers', 'reveal', 'answers') and math_state.get('pending'):
+            reveal_lines = [f"{p['number']}) {p['answer']}" for p in math_state['pending']]
+            response_text = "Here are the solutions you asked for:\n\n" + "\n".join(reveal_lines)
+            session['math_mode']['pending'] = []
+            AI_append(response_text)
+            return jsonify({"answer": response_text})
+
         if _is_new_seed_request(user_input) and not _looks_like_answers(user_input):
             allow_harder = not _wants_no_harder(user_input)
-            problems = _generate_math_set(user_input, allow_harder)
+            concept = (session.get('math_mode') or {}).get('concept') or user_input
+            problems = _generate_math_set(concept, allow_harder)
             math_state['problems'] = problems
             math_state['generated'] = True
             math_state['allow_harder'] = allow_harder
+            math_state['concept'] = concept
             session['math_mode'] = math_state
             if problems:
                 lines = [f"{p['number']}) {p['question']}" for p in problems]
@@ -333,21 +418,37 @@ def ask():
         given_answers = _parse_user_answers(user_input)
         results = []
         correct_count = 0
+        pending = []
         for p in problems:
             num = p.get('number')
             expected = p.get('answer')
             given = given_answers.get(num)
             if given is None:
-                results.append(f"{num}) Missing")
+                pending.append(p)
+                results.append(f"{num}) Missing. We'll keep this for a retry.")
                 continue
             ok = _answers_equal(expected, given)
             if ok:
                 correct_count += 1
                 results.append(f"{num}) Correct")
             else:
-                results.append(f"{num}) Incorrect. Expected: {expected}")
+                hint = _generate_hint(p.get('question'), expected)
+                results.append(f"{num}) Not quite right. Hint: {hint}")
+                pending.append(p)
         summary = f"You got {correct_count}/{len(problems)} correct."
-        response_text = summary + "\n" + "\n".join(results)
+        if pending:
+            session['math_mode']['pending'] = pending
+            response_text = (
+                summary
+                + "\n"
+                + "\n".join(results)
+                + "\n\nYou have "
+                + str(len(pending))
+                + " question(s) to retry. Reply 'retry' to try them again, or 'show answers' to reveal solutions."
+            )
+        else:
+            session['math_mode']['pending'] = []
+            response_text = summary + "\n" + "\n".join(results)
         AI_append(response_text)
         return jsonify({"answer": response_text})
     handle_user_message(user_input)
