@@ -169,6 +169,29 @@ def _answers_equal(expected: str, given: str) -> bool:
     # Fallback string compare (case/space insensitive)
     return str(expected).strip().lower() == str(given).strip().lower()
 
+def _looks_like_answers(text: str) -> bool:
+    import re
+    if not text:
+        return False
+    # Common answer indicators: 1) x, 2: y, etc.
+    numbered = re.findall(r"\b(\d{1,2})\s*[\)\:\-]", text)
+    if len(numbered) >= 3:
+        return True
+    # If many separators present, likely a list of answers
+    if sum(text.count(sep) for sep in [',', ';', '\n']) >= 3:
+        return True
+    return False
+
+def _is_new_seed_request(text: str) -> bool:
+    t = (text or "").lower()
+    keywords = ["new set", "new problems", "another", "more", "different set", "next set", "again", "generate"]
+    if any(k in t for k in keywords):
+        return True
+    # Heuristic: looks like a single math problem (contains '=' or '?' and not many separators)
+    has_math = ('=' in t) or ('?' in t)
+    many_seps = sum(t.count(sep) for sep in [',', ';', '\n']) >= 3
+    return has_math and not many_seps
+
 # Hardcoded users
 USERS = {
     "Avnish": "Nerd",
@@ -302,7 +325,25 @@ def ask():
                 response_text = "I couldn't generate problems right now. Please rephrase your question."
             AI_append(response_text)
             return jsonify({"answer": response_text})
-        # Otherwise, treat user_input as answers to check
+        # Otherwise, decide whether this is a new seed or answers to check
+        if _is_new_seed_request(user_input) and not _looks_like_answers(user_input):
+            allow_harder = not _wants_no_harder(user_input)
+            problems = _generate_math_set(user_input, allow_harder)
+            math_state['problems'] = problems
+            math_state['generated'] = True
+            math_state['allow_harder'] = allow_harder
+            session['math_mode'] = math_state
+            if problems:
+                lines = [f"{p['number']}) {p['question']}" for p in problems]
+                response_text = (
+                    "Here are 10 practice problems. When you're ready, reply with your answers in the form '1) answer, 2) answer, ...' or one per line.\n\n"
+                    + "\n".join(lines)
+                )
+            else:
+                response_text = "I couldn't generate problems right now. Please rephrase your question."
+            AI_append(response_text)
+            return jsonify({"answer": response_text})
+        # Treat as answers to check
         problems = math_state.get('problems', [])
         given_answers = _parse_user_answers(user_input)
         results = []
