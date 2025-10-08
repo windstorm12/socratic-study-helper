@@ -164,7 +164,7 @@
   <div id="chatContainer" style="display:none;"></div>
 
   <div id="inputContainer" style="display:none;">
-    <input type="text" id="userInput" placeholder="Type your message..." />
+    <textarea id="userInput" placeholder="Type your message..." style="flex:1; padding:12px 15px; font-size:16px; border:1px solid #ccc; border-radius:12px; outline:none; resize:vertical; min-height:44px;"></textarea>
     <button id="sendBtn">Send</button>
   </div>
   <div id="disclaimer" style="display:none; padding:6px 20px; font-size:12px; color:#666;">
@@ -280,7 +280,11 @@
 
     sendBtn.addEventListener('click', sendMessage);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') sendMessage();
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+      // Shift+Enter inserts newline by default in textarea
     });
 
     function startNewConversation() {
