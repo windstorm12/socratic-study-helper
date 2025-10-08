@@ -265,6 +265,65 @@ def _is_new_seed_request(text: str) -> bool:
     many_seps = sum(t.count(sep) for sep in [',', ';', '\n']) >= 3
     return has_math and not many_seps
 
+def _wants_help(text: str) -> bool:
+    t = (text or "").lower()
+    return any(k in t for k in ["help", "explain", "steps", "how do i", "walk me through", "guide me"])
+
+def _extract_problem_number(text: str) -> int:
+    import re
+    if not text:
+        return -1
+    m = re.search(r"problem\s*(\d{1,2})", text.lower())
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            return -1
+    m2 = re.search(r"\b(\d{1,2})\b", text)
+    if m2:
+        try:
+            return int(m2.group(1))
+        except Exception:
+            return -1
+    return -1
+
+def _generate_followups(concept: str):
+    prompt = f"""
+    Create exactly 5 focused practice problems on the SAME concept as "{concept}".
+    Keep difficulty similar to the original missed problem. Output STRICT JSON:
+    {{
+      "problems": [
+        {{"number": 1, "question": "...", "answer": "..."}},
+        {{"number": 2, "question": "...", "answer": "..."}},
+        {{"number": 3, "question": "...", "answer": "..."}},
+        {{"number": 4, "question": "...", "answer": "..."}},
+        {{"number": 5, "question": "...", "answer": "..."}}
+      ]
+    }}
+    No commentary or markdown.
+    """
+    client = get_genai_client()
+    response = client.models.generate_content(model=model_name, contents=prompt)
+    raw = response.text
+    try:
+        data = json.loads(_extract_json_block(raw))
+        probs = data.get("problems", [])
+    except Exception:
+        probs = []
+    places = _get_decimal_places()
+    formatted = []
+    for idx, p in enumerate(probs[:5], start=1):
+        q = p.get("question") if isinstance(p, dict) else None
+        a = p.get("answer") if isinstance(p, dict) else None
+        if q and a is not None:
+            try:
+                num = float(str(a).replace(',', '').strip())
+                a_str = _normalize_numeric_string(num, places)
+            except Exception:
+                a_str = str(a).strip()
+            formatted.append({"number": idx, "question": q, "answer": a_str})
+    return formatted
+
 # Hardcoded users
 USERS = {
     "Avnish": "Nerd",
@@ -388,12 +447,23 @@ def ask():
             response_text = "Let's try these again. Remember: short, clear steps.\n\n" + "\n".join(retry_lines)
             AI_append(response_text)
             return jsonify({"answer": response_text})
-        if user_input.strip().lower() in ('show answers', 'reveal', 'answers') and math_state.get('pending'):
-            reveal_lines = [f"{p['number']}) {p['answer']}" for p in math_state['pending']]
-            response_text = "Here are the solutions you asked for:\n\n" + "\n".join(reveal_lines)
-            session['math_mode']['pending'] = []
-            AI_append(response_text)
-            return jsonify({"answer": response_text})
+        if _wants_help(user_input) and math_state.get('pending'):
+            prob_num = _extract_problem_number(user_input)
+            target = None
+            if prob_num != -1:
+                for p in math_state['pending']:
+                    if p.get('number') == prob_num:
+                        target = p
+                        break
+            target = target or (math_state['pending'][0] if math_state['pending'] else None)
+            if target:
+                hint = _generate_hint(target.get('question'), target.get('answer'))
+                response_text = (
+                    f"Let's walk through problem {target.get('number')}. {hint}\n\n"
+                    "Try it again and send your updated answer."
+                )
+                AI_append(response_text)
+                return jsonify({"answer": response_text})
 
         if _is_new_seed_request(user_input) and not _looks_like_answers(user_input):
             allow_harder = not _wants_no_harder(user_input)
@@ -444,7 +514,7 @@ def ask():
                 + "\n".join(results)
                 + "\n\nYou have "
                 + str(len(pending))
-                + " question(s) to retry. Reply 'retry' to try them again, or 'show answers' to reveal solutions."
+                + " question(s) to retry. Reply 'retry' to try them again, or ask for help on a specific problem (e.g., 'help with problem 4')."
             )
         else:
             session['math_mode']['pending'] = []
