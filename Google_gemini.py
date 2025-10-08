@@ -3,6 +3,7 @@ from flask_cors import CORS
 from google import genai
 import os
 import logging
+import json
 
 # Flask app setup
 logging.basicConfig(level=logging.INFO)
@@ -98,6 +99,82 @@ def get_answer(user_subject, user_input):
     AI_append(ai_answer)
     return ai_answer
 
+# ---------------- Math mode helpers ----------------
+def _wants_no_harder(text: str) -> bool:
+    t = (text or "").lower()
+    keywords = [
+        "no harder", "not harder", "same difficulty", "do not make harder",
+        "don't make harder", "keep same level", "not give harder"
+    ]
+    return any(k in t for k in keywords)
+
+def _extract_json_block(text: str) -> str:
+    if not text:
+        return ""
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        return text[start:end+1]
+    return text
+
+def _generate_math_set(seed_prompt: str, allow_harder: bool):
+    level_note = "make them slightly harder than the seed" if allow_harder else "keep them at the same difficulty as the seed"
+    prompt = f"""
+    Create exactly 10 math practice problems about the SAME underlying concept as:
+    "{seed_prompt}"
+    and {level_note}.
+    Output STRICT JSON with this schema:
+    {{
+      "problems": [
+        {{ "number": 1, "question": "...", "answer": "..." }},
+        ... up to 10 problems ...
+      ]
+    }}
+    - "answer" should be concise. If numeric, provide a simplified numeric value.
+    - Do not include any extra commentary or code fences.
+    """
+    client = get_genai_client()
+    response = client.models.generate_content(model=model_name, contents=prompt)
+    raw = response.text
+    try:
+        json_text = _extract_json_block(raw)
+        data = json.loads(json_text)
+        problems = data.get("problems", [])
+    except Exception:
+        problems = []
+    formatted = []
+    for idx, p in enumerate(problems[:10], start=1):
+        q = p.get("question") if isinstance(p, dict) else None
+        a = p.get("answer") if isinstance(p, dict) else None
+        if q and a is not None:
+            formatted.append({"number": idx, "question": q, "answer": str(a).strip()})
+    return formatted
+
+def _parse_user_answers(text: str) -> dict:
+    import re
+    answers = {}
+    for part in re.split(r"[\n;,]", text or ""):
+        m = re.search(r"(\d{1,2})\s*[\)\:\-]??\s*(.+)", part.strip())
+        if m:
+            num = int(m.group(1))
+            ans = m.group(2).strip()
+            if ans:
+                answers[num] = ans
+    if not answers:
+        tokens = [t for t in (text or "").replace("\n", " ").split(" ") if t.strip()]
+        for i, tok in enumerate(tokens[:10], start=1):
+            answers[i] = tok
+    return answers
+
+def _answers_equal(expected: str, given: str) -> bool:
+    try:
+        e = float(str(expected).replace(",", "").strip())
+        g = float(str(given).replace(",", "").strip())
+        return abs(e - g) <= max(1e-6, 1e-3 * max(abs(e), 1.0))
+    except Exception:
+        pass
+    return str(expected).strip().lower() == str(given).strip().lower()
+
 # Hardcoded users
 USERS = {
     "Avnish": "Nerd",
@@ -173,6 +250,14 @@ def set_subject():
             return jsonify({"error": "No JSON data provided"}), 400
         user_subject = data.get('subject', '')
         conversation = []
+        if user_subject == 'Math':
+            session['math_mode'] = {
+                'problems': [],
+                'generated': False,
+                'allow_harder': True
+            }
+        else:
+            session.pop('math_mode', None)
         logger.info(f"Subject set to: {user_subject}")
         return jsonify({"status": "success", "subject": user_subject})
     except Exception as e:
@@ -187,6 +272,43 @@ def ask():
     global user_subject
     data = request.json
     user_input = data.get('message', '')
+    if session.get('math_mode') is not None and user_subject == 'Math':
+        math_state = session.get('math_mode') or {}
+        if not math_state.get('generated'):
+            allow_harder = not _wants_no_harder(user_input)
+            problems = _generate_math_set(user_input, allow_harder)
+            math_state['problems'] = problems
+            math_state['generated'] = True
+            math_state['allow_harder'] = allow_harder
+            session['math_mode'] = math_state
+            if problems:
+                lines = [f"{p['number']}) {p['question']}" for p in problems]
+                response_text = "Here are 10 practice problems. When you're ready, reply with your answers in the form '1) answer, 2) answer, ...' or one per line.\n\n" + "\n".join(lines)
+            else:
+                response_text = "I couldn't generate problems right now. Please rephrase your question."
+            AI_append(response_text)
+            return jsonify({"answer": response_text})
+        problems = math_state.get('problems', [])
+        given_answers = _parse_user_answers(user_input)
+        results = []
+        correct_count = 0
+        for p in problems:
+            num = p.get('number')
+            expected = p.get('answer')
+            given = given_answers.get(num)
+            if given is None:
+                results.append(f"{num}) Missing")
+                continue
+            ok = _answers_equal(expected, given)
+            if ok:
+                correct_count += 1
+                results.append(f"{num}) Correct")
+            else:
+                results.append(f"{num}) Incorrect. Expected: {expected}")
+        summary = f"You got {correct_count}/{len(problems)} correct."
+        response_text = summary + "\n" + "\n".join(results)
+        AI_append(response_text)
+        return jsonify({"answer": response_text})
     handle_user_message(user_input)
     User_append(user_input)
     ai_answer = get_answer(user_subject, user_input)

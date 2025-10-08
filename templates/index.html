@@ -166,6 +166,9 @@
     <input type="text" id="userInput" placeholder="Type your message..." />
     <button id="sendBtn">Send</button>
   </div>
+  <div id="disclaimer" style="display:none; padding:6px 20px; font-size:12px; color:#666;">
+    Socratic AI can make mistakes. Check important info.
+  </div>
 
   <script>
     // Backend URL - update this to your Railway deployment URL
@@ -178,6 +181,7 @@
     const userBadge = document.getElementById('userBadge');
     const logoutBtn = document.getElementById('logoutBtn');
     // Discord link is hardcoded in the DOM to avoid accidental overrides
+    const disclaimer = document.getElementById('disclaimer');
 
     // Initial visibility: show intro, hide auth/chat until proceed
     authContainer.style.display = 'none';
@@ -284,6 +288,7 @@
       document.getElementById('subjectSelect').value = "";
       inputContainer.style.display = "none";
       conversation = [];
+      disclaimer.style.display = 'none';
     }
 
     async function setSubject(subject) {
@@ -293,6 +298,7 @@
       chatContainer.innerHTML = '';
       conversation = [];
       inputContainer.style.display = "flex";
+      disclaimer.style.display = 'block';
       await fetch(`${BACKEND_URL}/set_subject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
