@@ -120,6 +120,7 @@ def _generate_math_set(seed_prompt: str, allow_harder: bool):
     }}
     - "answer" should be concise. If numeric, provide a simplified numeric value.
     - Do not include any extra commentary or code fences.
+    - Each problem should be self-contained and concise so it can be listed one per line in a chat UI.
     """
     client = get_genai_client()
     response = client.models.generate_content(model=model_name, contents=prompt)
@@ -292,7 +293,11 @@ def ask():
             # Return problems list to the user
             if problems:
                 lines = [f"{p['number']}) {p['question']}" for p in problems]
-                response_text = "Here are 10 practice problems. When you're ready, reply with your answers in the form '1) answer, 2) answer, ...' or one per line.\n\n" + "\n".join(lines)
+                # Ensure each problem is on its own line in the UI
+                response_text = (
+                    "Here are 10 practice problems. When you're ready, reply with your answers in the form '1) answer, 2) answer, ...' or one per line.\n\n"
+                    + "\n".join(lines)
+                )
             else:
                 response_text = "I couldn't generate problems right now. Please rephrase your question."
             AI_append(response_text)
