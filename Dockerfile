@@ -1,16 +1,22 @@
-FROM python:3.10-slim
+FROM docker.io/library/python:3.10-slim
 
+# Force rebuild - v2
 WORKDIR /app
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y gcc && rm -rf /var/lib/apt/lists/*
 
+# Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY google_gemini.py .
-COPY templates/ templates/
+# Copy application files (NOT google_gemini.py!)
+COPY app.py .
+COPY models.py .
+COPY templates ./templates
 
+# Expose port
 EXPOSE 7860
 
-# Use Gunicorn instead of Flask dev server
-CMD ["gunicorn", "-w", "1", "-k", "sync", "--timeout", "120", "-b", "0.0.0.0:7860", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "google_gemini:app"]
+# Run the application
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--timeout", "120", "app:app"]

@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Teacher Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+    }
+    input, textarea {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-right: 8px;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      background: #007aff;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0051d5;
+    }
+    .classroom-item {
+      padding: 12px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .student-item {
+      padding: 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .topic-item {
+      display: inline-block;
+      padding: 6px 12px;
+      margin: 4px;
+      background: #e3f2fd;
+      border-radius: 16px;
+      font-size: 14px;
+    }
+    .topic-count {
+      background: #007aff;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    .stat-card {
+      display: inline-block;
+      padding: 16px;
+      margin: 8px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border-left: 4px solid #007aff;
+    }
+    .stat-number {
+      font-size: 32px;
+      font-weight: 700;
+      color: #007aff;
+    }
+    .stat-label {
+      font-size: 14px;
+      color: #666;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h2>Teacher Dashboard</h2>
+      <button onclick="logout()" style="background: #dc3545;">Logout</button>
+    </div>
+    
+    <div style="margin-bottom:24px;">
+      <h3>Create Classroom</h3>
+      <input id="className" placeholder="Class name" />
+      <button onclick="createClassroom()">Create</button>
+    </div>
+
+    <h3>Your Classrooms</h3>
+    <div id="classList"></div>
+
+    <div id="classDetail" style="margin-top:24px; display:none;">
+      <h3 id="detailTitle"></h3>
+      
+      <div style="margin-bottom:16px;">
+        <button onclick="regenCode()">Regenerate Join Code</button>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <h4>Add Student</h4>
+        <input id="studentUsername" placeholder="Username" />
+        <input id="studentPassword" placeholder="Password" type="password" />
+        <button onclick="addStudent()">Add</button>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <h4>Bulk Add Students</h4>
+        <textarea id="bulkInput" rows="6" style="width:100%;" placeholder="One per line: username,password"></textarea>
+        <div style="margin-top:8px;">
+          <button onclick="bulkAdd()">Bulk Add</button>
+        </div>
+        <div id="bulkResults" style="font-size:13px; margin-top:8px; white-space: pre-wrap;"></div>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h4>Enrolled Students</h4>
+        <div id="studentList"></div>
+      </div>
+
+      <!-- Add this AFTER the "Enrolled Students" section and BEFORE analytics -->
+
+      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 32px 0;">
+
+      <h3>🚨 Student Alerts</h3>
+      <div id="alertsContainer" style="margin-bottom:24px;">
+        <p style="color:#666;">Loading alerts...</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 32px 0;">
+
+      <h3>📊 Classroom Analytics (Last 7 Days)</h3>
+      
+      <!-- NEW: AI Summary Section -->
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; margin-bottom: 24px; color: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h4 style="margin: 0; color: white;">🤖 AI Classroom Insights</h4>
+          <button onclick="loadSummary()" style="background: white; color: #667eea; padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">
+            🔄 Refresh
+          </button>
+        </div>
+        <div id="aiSummary" style="background: rgba(255,255,255,0.15); padding: 16px; border-radius: 8px; line-height: 1.6; font-size: 14px;">
+          <em style="opacity: 0.8;">Loading insights...</em>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:24px;">
+        <div class="stat-card">
+          <div class="stat-number" id="activeStudents">0</div>
+          <div class="stat-label">Active Students</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalMessages">0</div>
+          <div class="stat-label">Student Messages</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="totalInteractions">0</div>
+          <div class="stat-label">Total Interactions</div>
+        </div>
+      </div>
+
+      <h4>Daily Activity</h4>
+      <canvas id="dailyChart" width="600" height="200" style="margin-bottom:24px;"></canvas>
+
+      <h4>Subject Breakdown</h4>
+      <div id="subjectBreakdown" style="margin-bottom:24px;"></div>
+
+      <h4>🔥 Trending Topics</h4>
+      <p style="color:#666; font-size:14px;">Most discussed concepts in student questions:</p>
+      <div id="topicTrends" style="margin-bottom:24px;"></div>
+
+      <!-- Updated: Collapsible section for individual questions -->
+      <div style="margin-bottom:24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleQuestions()">
+          <h4 style="margin: 0;">📝 Recent Student Questions</h4>
+          <span id="questionsToggle" style="font-size: 20px;">▼</span>
+        </div>
+        <div id="commonQuestions" style="margin-top: 12px; display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ⚠️ REPLACE WITH YOUR SUPABASE CREDENTIALS
+    const SUPABASE_URL = 'https://ssowfoqwoyoplavkgkcc.supabase.co'; // Replace with your Supabase URL
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzb3dmb3F3b3lvcGxhdmtna2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2MDM3NzQsImV4cCI6MjA3NjE3OTc3NH0.RRtcoh61Gjv16SWEavP9_I5cih0fyyRJSKXA0y4NBNk'; // Replace with your Supabase anon key
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentTeacher = null;
+    let currentClassroom = null;
+
+    // Password hashing using Web Crypto API
+    async function hashPassword(password) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex;
+    }
+
+    // Check auth
+    (function() {
+      const teacher = localStorage.getItem('teacher');
+      if (!teacher) {
+        window.location.href = '/teacher/login';
+        return;
+      }
+      currentTeacher = JSON.parse(teacher);
+      loadClassrooms();
+    })();
+
+    function logout() {
+      localStorage.removeItem('teacher');
+      window.location.href = '/teacher/login';
+    }
+
+    function generateCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    async function createClassroom() {
+      const name = document.getElementById('className').value.trim();
+      if (!name) return;
+
+      const code = generateCode();
+      const { error } = await supabase
+        .from('classrooms')
+        .insert({
+          teacher_id: currentTeacher.id,
+          name,
+          join_code: code
+        });
+
+      if (error) {
+        alert('Could not create classroom: ' + error.message);
+        return;
+      }
+
+      document.getElementById('className').value = '';
+      loadClassrooms();
+    }
+
+    async function loadClassrooms() {
+      const { data } = await supabase
+        .from('classrooms')
+        .select('*')
+        .eq('teacher_id', currentTeacher.id)
+        .order('created_at', { ascending: false });
+
+      const container = document.getElementById('classList');
+      container.innerHTML = '';
+
+      if (!data || data.length === 0) {
+        container.innerHTML = '<p style="color:#666;">No classrooms yet. Create one above!</p>';
+        return;
+      }
+
+      data.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'classroom-item';
+        div.innerHTML = `
+          <div>
+            <strong>${c.name}</strong><br>
+            <small>Join Code: <code style="background:#f0f0f0; padding:2px 6px; border-radius:4px;">${c.join_code}</code></small>
+          </div>
+          <button onclick='openClassroom(${JSON.stringify(c).replace(/'/g, "&#39;")})'>Open</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function openClassroom(classroom) {
+      currentClassroom = classroom;
+      document.getElementById('detailTitle').textContent = `${classroom.name} (${classroom.join_code})`;
+      document.getElementById('classDetail').style.display = 'block';
+      loadStudents();
+      loadAnalytics();
+    }
+
+    async function regenCode() {
+      const code = generateCode();
+      const { error } = await supabase
+        .from('classrooms')
+        .update({ join_code: code })
+        .eq('id', currentClassroom.id);
+
+      if (error) {
+        alert('Could not regenerate code: ' + error.message);
+        return;
+      }
+
+      currentClassroom.join_code = code;
+      document.getElementById('detailTitle').textContent = `${currentClassroom.name} (${code})`;
+      alert('New join code: ' + code);
+      loadClassrooms();
+    }
+
+    async function addStudent() {
+      const username = document.getElementById('studentUsername').value.trim();
+      const password = document.getElementById('studentPassword').value;
+
+      if (!username || !password) {
+        alert('Username and password required');
+        return;
+      }
+
+      try {
+        const passwordHash = await hashPassword(password);
+
+        let { data: student } = await supabase
+          .from('students')
+          .select('*')
+          .eq('username', username)
+          .maybeSingle();
+
+        if (!student) {
+          const { data: newStudent, error } = await supabase
+            .from('students')
+            .insert({ username, password_hash: passwordHash })
+            .select()
+            .single();
+
+          if (error) throw error;
+          student = newStudent;
+        } else {
+          await supabase
+            .from('students')
+            .update({ password_hash: passwordHash })
+            .eq('id', student.id);
+        }
+
+        await supabase
+          .from('enrollments')
+          .insert({
+            classroom_id: currentClassroom.id,
+            student_id: student.id
+          });
+
+        document.getElementById('studentUsername').value = '';
+        document.getElementById('studentPassword').value = '';
+        alert('Student added successfully!');
+        loadStudents();
+      } catch (error) {
+        if (error.code === '23505') {
+          alert('Student already enrolled in this classroom');
+        } else {
+          alert('Error: ' + error.message);
+        }
+      }
+    }
+
+    async function bulkAdd() {
+      const lines = document.getElementById('bulkInput').value.split('\n');
+      const results = [];
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        const [username, password] = trimmed.split(',').map(s => s.trim());
+        if (!username || !password) {
+          results.push(`❌ ${trimmed} - Invalid format`);
+          continue;
+        }
+
+        try {
+          const passwordHash = await hashPassword(password);
+
+          let { data: student } = await supabase
+            .from('students')
+            .select('*')
+            .eq('username', username)
+            .maybeSingle();
+
+          if (!student) {
+            const { data: newStudent, error } = await supabase
+              .from('students')
+              .insert({ username, password_hash: passwordHash })
+              .select()
+              .single();
+
+            if (error) throw error;
+            student = newStudent;
+          } else {
+            await supabase
+              .from('students')
+              .update({ password_hash: passwordHash })
+              .eq('id', student.id);
+          }
+
+          await supabase
+            .from('enrollments')
+            .insert({
+              classroom_id: currentClassroom.id,
+              student_id: student.id
+            });
+
+          results.push(`✅ ${username} - Added`);
+        } catch (error) {
+          if (error.code === '23505') {
+            results.push(`⚠️ ${username} - Already enrolled`);
+          } else {
+            results.push(`❌ ${username} - Error: ${error.message}`);
+          }
+        }
+      }
+
+      document.getElementById('bulkResults').textContent = results.join('\n');
+      if (results.some(r => r.startsWith('✅'))) {
+        document.getElementById('bulkInput').value = '';
+        loadStudents();
+      }
+    }
+
+    async function loadStudents() {
+      const { data: enrollments } = await supabase
+        .from('enrollments')
+        .select('student_id')
+        .eq('classroom_id', currentClassroom.id);
+
+      const studentIds = (enrollments || []).map(e => e.student_id);
+      
+      if (studentIds.length === 0) {
+        document.getElementById('studentList').innerHTML = '<p style="color:#666;">No students enrolled yet</p>';
+        return;
+      }
+
+      const { data: students } = await supabase
+        .from('students')
+        .select('username, created_at')
+        .in('id', studentIds)
+        .order('username');
+
+      const html = (students || []).map(s => 
+        `<div class="student-item">👤 ${s.username}</div>`
+      ).join('');
+      
+      document.getElementById('studentList').innerHTML = html;
+    }
+
+    // Extract topics from text
+    function extractTopics(messages) {
+      const stopWords = new Set([
+        'the', 'is', 'at', 'which', 'on', 'a', 'an', 'as', 'are', 'was', 'were',
+        'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+        'would', 'should', 'could', 'may', 'might', 'must', 'can', 'of', 'to',
+        'in', 'for', 'with', 'and', 'or', 'but', 'not', 'so', 'than', 'too',
+        'very', 'just', 'about', 'i', 'you', 'he', 'she', 'it', 'they', 'what',
+        'how', 'why', 'when', 'where', 'who', 'this', 'that', 'these', 'those',
+        'my', 'your', 'his', 'her', 'its', 'their', 'me', 'him', 'them', 'us'
+      ]);
+
+      const wordFreq = {};
+      const phraseFreq = {};
+
+      messages.forEach(msg => {
+        const text = msg.content.toLowerCase();
+        
+        // Extract 2-3 word phrases
+        const words = text.match(/\b[a-z]{3,}\b/g) || [];
+        
+        // Single words
+        words.forEach(word => {
+          if (!stopWords.has(word)) {
+            wordFreq[word] = (wordFreq[word] || 0) + 1;
+          }
+        });
+
+        // Two-word phrases
+        for (let i = 0; i < words.length - 1; i++) {
+          if (!stopWords.has(words[i]) && !stopWords.has(words[i + 1])) {
+            const phrase = `${words[i]} ${words[i + 1]}`;
+            phraseFreq[phrase] = (phraseFreq[phrase] || 0) + 1;
+          }
+        }
+
+        // Three-word phrases
+        for (let i = 0; i < words.length - 2; i++) {
+          if (!stopWords.has(words[i]) && !stopWords.has(words[i + 1])) {
+            const phrase = `${words[i]} ${words[i + 1]} ${words[i + 2]}`;
+            phraseFreq[phrase] = (phraseFreq[phrase] || 0) + 1;
+          }
+        }
+      });
+
+      // Combine and sort
+      const topics = {};
+      Object.entries(phraseFreq).forEach(([phrase, count]) => {
+        if (count >= 2) { // Only show phrases mentioned at least twice
+          topics[phrase] = count;
+        }
+      });
+
+      Object.entries(wordFreq).forEach(([word, count]) => {
+        if (count >= 3 && word.length > 4) { // Only show words mentioned at least 3 times
+          topics[word] = count;
+        }
+      });
+
+      return Object.entries(topics)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15);
+    }
+
+    async function loadAnalytics() {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // Get only USER messages (not AI responses)
+      const { data: userMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('classroom_id', currentClassroom.id)
+        .eq('role', 'user')
+        .gte('created_at', sevenDaysAgo.toISOString());
+
+      // Get ALL messages for total interactions
+      const { data: allMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('classroom_id', currentClassroom.id)
+        .gte('created_at', sevenDaysAgo.toISOString());
+
+      if (!userMessages) {
+        document.getElementById('activeStudents').textContent = '0';
+        document.getElementById('totalMessages').textContent = '0';
+        document.getElementById('totalInteractions').textContent = '0';
+        return;
+      }
+
+      // Stats
+      const uniqueStudents = new Set(userMessages.filter(m => m.student_id).map(m => m.student_id));
+      document.getElementById('activeStudents').textContent = uniqueStudents.size;
+      document.getElementById('totalMessages').textContent = userMessages.length;
+      document.getElementById('totalInteractions').textContent = (allMessages || []).length;
+
+      // Daily counts (USER messages only)
+      const dailyCounts = {};
+      userMessages.forEach(m => {
+        const date = m.created_at.split('T')[0];
+        dailyCounts[date] = (dailyCounts[date] || 0) + 1;
+      });
+
+      const labels = Object.keys(dailyCounts).sort();
+      const counts = labels.map(l => dailyCounts[l]);
+
+      const ctx = document.getElementById('dailyChart').getContext('2d');
+      if (window._chart) window._chart.destroy();
+      window._chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Student Messages',
+            data: counts,
+            borderColor: '#007aff',
+            backgroundColor: 'rgba(0, 122, 255, 0.1)',
+            tension: 0.3,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+      // Subject breakdown (USER messages only)
+      const subjectCounts = {};
+      userMessages.forEach(m => {
+        if (m.subject) {
+          subjectCounts[m.subject] = (subjectCounts[m.subject] || 0) + 1;
+        }
+      });
+
+      const subjectHtml = Object.entries(subjectCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([subject, count]) => 
+          `<div style="padding:8px; border-left:3px solid #007aff; margin:4px 0; background:#f8f9fa;">
+            <strong>${subject}:</strong> ${count} questions
+          </div>`
+        )
+        .join('');
+      
+      document.getElementById('subjectBreakdown').innerHTML = subjectHtml || '<p style="color:#666;">No activity yet</p>';
+
+      // Topic trends
+      const topics = extractTopics(userMessages);
+      const topicHtml = topics.map(([topic, count]) => 
+        `<span class="topic-item">${topic}<span class="topic-count">${count}</span></span>`
+      ).join('');
+      
+      document.getElementById('topicTrends').innerHTML = topicHtml || '<p style="color:#666;">Not enough data yet</p>';
+
+      // Common questions (show actual questions)
+      const questions = userMessages
+        .filter(m => m.content.includes('?') || m.content.split(' ').length > 5)
+        .slice(0, 10)
+        .map(m => ({
+          text: m.content.substring(0, 150) + (m.content.length > 150 ? '...' : ''),
+          date: new Date(m.created_at).toLocaleDateString()
+        }));
+
+      const questionsHtml = questions.map(q => 
+        `<div style="padding:12px; margin:8px 0; background:#f8f9fa; border-radius:8px; border-left:3px solid #28a745;">
+          <div style="font-size:14px; color:#333;">"${q.text}"</div>
+          <div style="font-size:12px; color:#999; margin-top:4px;">${q.date}</div>
+        </div>`
+      ).join('');
+
+      document.getElementById('commonQuestions').innerHTML = questionsHtml || '<p style="color:#666;">No questions yet</p>';
+    }
+        // Store messages globally for summary
+    let currentMessages = [];
+    // Add this function
+    async function loadAlerts() {
+      if (!currentClassroom) return;
+      
+      const res = await fetch(`/api/teacher/alerts?classroom_id=${currentClassroom.id}`, {
+        credentials: 'include'
+      });
+      const data = await res.json();
+      
+      if (!data.ok) return;
+      
+      const container = document.getElementById('alertsContainer');
+      
+      if (!data.alerts || data.alerts.length === 0) {
+        container.innerHTML = '<p style="color:#666;">✅ No alerts - all students on track!</p>';
+        return;
+      }
+      
+      // Group by severity
+      const high = data.alerts.filter(a => a.severity === 'high');
+      const medium = data.alerts.filter(a => a.severity === 'medium');
+      const low = data.alerts.filter(a => a.severity === 'low');
+      
+      let html = '';
+      
+      if (high.length > 0) {
+        html += '<h4 style="color:#dc3545; margin-top:0;">🔴 Urgent ({high.length})</h4>';
+        high.forEach(alert => {
+          html += renderAlert(alert, '#dc3545');
+        });
+      }
+      
+      if (medium.length > 0) {
+        html += '<h4 style="color:#ffc107; margin-top:16px;">⚠️ Needs Attention (${medium.length})</h4>';
+        medium.forEach(alert => {
+          html += renderAlert(alert, '#ffc107');
+        });
+      }
+      
+      if (low.length > 0) {
+        html += '<h4 style="color:#28a745; margin-top:16px;">ℹ️ Info (${low.length})</h4>';
+        low.forEach(alert => {
+          html += renderAlert(alert, '#28a745');
+        });
+      }
+      
+      container.innerHTML = html;
+    }
+
+    function renderAlert(alert, color) {
+      const time = new Date(alert.created_at).toLocaleString();
+      return `
+        <div style="border-left:4px solid ${color}; padding:12px; margin:8px 0; background:#f8f9fa; border-radius:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:start;">
+            <div style="flex:1;">
+              <strong>${alert.student_name}</strong> - ${alert.topic}
+              <div style="font-size:13px; color:#666; margin:4px 0;">${alert.message}</div>
+              <div style="font-size:12px; color:#999;">${time}</div>
+              ${alert.recommendation ? `
+                <div style="background:#fff; padding:8px; margin-top:8px; border-radius:4px; font-size:13px;">
+                  💡 <strong>Suggestion:</strong> ${alert.recommendation}
+                </div>
+              ` : ''}
+            </div>
+            <button onclick="acknowledgeAlert('${alert.id}')" style="padding:4px 12px; font-size:12px;">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function acknowledgeAlert(alertId) {
+      await fetch(`/api/teacher/alerts/${alertId}/acknowledge`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      loadAlerts(); // Refresh
+    }
+
+    // Update openClassroom function to also load alerts
+    function openClassroom(classroom) {
+      currentClassroom = classroom;
+      document.getElementById('detailTitle').textContent = `${classroom.name} (${classroom.join_code})`;
+      document.getElementById('classDetail').style.display = 'block';
+      loadStudents();
+      loadAlerts();  // ADD THIS LINE
+      loadAnalytics();
+    }
+    // Toggle questions visibility
+    function toggleQuestions() {
+      const questionsDiv = document.getElementById('commonQuestions');
+      const toggle = document.getElementById('questionsToggle');
+      
+      if (questionsDiv.style.display === 'none') {
+        questionsDiv.style.display = 'block';
+        toggle.textContent = '▲';
+      } else {
+        questionsDiv.style.display = 'none';
+        toggle.textContent = '▼';
+      }
+    }
+
+    // Generate AI summary
+    async function loadSummary() {
+      const summaryDiv = document.getElementById('aiSummary');
+      summaryDiv.innerHTML = '<em style="opacity: 0.8;">✨ Analyzing classroom activity...</em>';
+      
+      if (currentMessages.length === 0) {
+        summaryDiv.innerHTML = '<em style="opacity: 0.8;">No student activity yet. Once students start asking questions, insights will appear here.</em>';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/teacher/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            messages: currentMessages,
+            classroom_name: currentClassroom.name
+          })
+        });
+
+        const data = await response.json();
+        
+        if (data.ok) {
+          // Format the summary with markdown-style formatting
+          let formattedSummary = data.summary
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
+          
+          summaryDiv.innerHTML = formattedSummary;
+        } else {
+          summaryDiv.innerHTML = '<em style="opacity: 0.8;">Could not generate summary. Try again.</em>';
+        }
+      } catch (error) {
+        console.error('Summary error:', error);
+        summaryDiv.innerHTML = '<em style="opacity: 0.8;">Error generating insights.</em>';
+      }
+    }
+
+    // Update the loadAnalytics function to also load summary
+    async function loadAnalytics() {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      // Get only USER messages (not AI responses)
+      const { data: userMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('classroom_id', currentClassroom.id)
+        .eq('role', 'user')
+        .gte('created_at', sevenDaysAgo.toISOString())
+        .order('created_at', { ascending: false });
+
+      // Get ALL messages for total interactions
+      const { data: allMessages } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('classroom_id', currentClassroom.id)
+        .gte('created_at', sevenDaysAgo.toISOString());
+
+      if (!userMessages) {
+        document.getElementById('activeStudents').textContent = '0';
+        document.getElementById('totalMessages').textContent = '0';
+        document.getElementById('totalInteractions').textContent = '0';
+        document.getElementById('aiSummary').innerHTML = '<em style="opacity: 0.8;">No activity yet.</em>';
+        return;
+      }
+
+      // Store for summary
+      currentMessages = userMessages;
+
+      // Generate AI summary
+      loadSummary();
+
+      // Stats
+      const uniqueStudents = new Set(userMessages.filter(m => m.student_id).map(m => m.student_id));
+      document.getElementById('activeStudents').textContent = uniqueStudents.size;
+      document.getElementById('totalMessages').textContent = userMessages.length;
+      document.getElementById('totalInteractions').textContent = (allMessages || []).length;
+
+      // Daily counts (USER messages only)
+      const dailyCounts = {};
+      userMessages.forEach(m => {
+        const date = m.created_at.split('T')[0];
+        dailyCounts[date] = (dailyCounts[date] || 0) + 1;
+      });
+
+      const labels = Object.keys(dailyCounts).sort();
+      const counts = labels.map(l => dailyCounts[l]);
+
+      const ctx = document.getElementById('dailyChart').getContext('2d');
+      if (window._chart) window._chart.destroy();
+      window._chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Student Messages',
+            data: counts,
+            borderColor: '#007aff',
+            backgroundColor: 'rgba(0, 122, 255, 0.1)',
+            tension: 0.3,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+      // Subject breakdown (USER messages only)
+      const subjectCounts = {};
+      userMessages.forEach(m => {
+        if (m.subject) {
+          subjectCounts[m.subject] = (subjectCounts[m.subject] || 0) + 1;
+        }
+      });
+
+      const subjectHtml = Object.entries(subjectCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([subject, count]) => 
+          `<div style="padding:8px; border-left:3px solid #007aff; margin:4px 0; background:#f8f9fa;">
+            <strong>${subject}:</strong> ${count} questions
+          </div>`
+        )
+        .join('');
+      
+      document.getElementById('subjectBreakdown').innerHTML = subjectHtml || '<p style="color:#666;">No activity yet</p>';
+
+      // Topic trends
+      const topics = extractTopics(userMessages);
+      const topicHtml = topics.map(([topic, count]) => 
+        `<span class="topic-item">${topic}<span class="topic-count">${count}</span></span>`
+      ).join('');
+      
+      document.getElementById('topicTrends').innerHTML = topicHtml || '<p style="color:#666;">Not enough data yet</p>';
+
+      // Common questions (now collapsible, showing last 10)
+      const questions = userMessages
+        .filter(m => m.content.trim().length > 10)
+        .slice(0, 10)
+        .map(m => ({
+          text: m.content.substring(0, 150) + (m.content.length > 150 ? '...' : ''),
+          date: new Date(m.created_at).toLocaleDateString()
+        }));
+
+      const questionsHtml = questions.map(q => 
+        `<div style="padding:12px; margin:8px 0; background:#f8f9fa; border-radius:8px; border-left:3px solid #28a745;">
+          <div style="font-size:14px; color:#333;">"${q.text}"</div>
+          <div style="font-size:12px; color:#999; margin-top:4px;">${q.date}</div>
+        </div>`
+      ).join('');
+
+      document.getElementById('commonQuestions').innerHTML = questionsHtml || '<p style="color:#666;">No questions yet</p>';
+    }
+
+  </script>
+</body>
+</html>
