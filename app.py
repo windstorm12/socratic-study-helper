@@ -1,7 +1,7 @@
 # app.py
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_cors import CORS
-import google.generativeai as genai
+from groq import Groq
 import os, logging, json, random, string, datetime as dt
 from collections import Counter
 from datetime import datetime, timedelta
@@ -79,20 +79,6 @@ def teacher_required(func):
         return func(*args, **kwargs)
     return wrapper
 
-# AI Configuration
-_genai_client = None
-model_name = "gemini-2.5-flash"
-
-def get_genai_client():
-    global _genai_client
-    if _genai_client is None:
-        api_key = os.environ.get('GEMINI_API_KEY')
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY required")
-        genai.configure(api_key=api_key)
-        _genai_client = True  # Just a flag that it's configured
-    return genai
-
 # Session-based conversation storage
 def get_conversation():
     if 'conversation' not in session:
@@ -110,92 +96,42 @@ def set_subject(subject):
 # app.py - Replace the get_answer function and add these new ones
 
 def get_answer(user_subject, user_input):
-    """Main function to generate AI teaching response"""
-    
-    # Get conversation history and settings
+    """Groq version with Llama 3.3"""
     conversation = get_conversation()
     teaching_mode = session.get('teaching_mode', 'guided')
-    student_id = session.get('user_id')
-    classroom_id = session.get('classroom_id')
     
-    # Detect if this looks like a homework question
-    homework_indicators = [
-        'solve', 'calculate', 'what is the answer', 'help me with this problem',
-        'do this', 'find the', 'determine', 'compute', 'what\'s the answer to',
-        'answer to question', 'homework', 'assignment', 'due tomorrow',
-        'calculate the value', 'solve for', 'find x', 'what is x'
+    # Build messages
+    messages = [
+        {"role": "system", "content": get_teaching_prompt(teaching_mode)}
     ]
     
-    is_likely_homework = any(indicator in user_input.lower() for indicator in homework_indicators)
-    has_numbers = any(char.isdigit() for char in user_input)
+    for msg in conversation[-6:]:
+        messages.append({
+            "role": "user" if msg['role'] == 'user' else "assistant",
+            "content": msg['content']
+        })
     
-    # Get base teaching prompt for the mode
-    base_prompt = get_teaching_prompt(teaching_mode)
+    messages.append({
+        "role": "user", 
+        "content": f"Subject: {user_subject}\n\n{user_input}"
+    })
     
-    # Add homework warning if detected
-    if is_likely_homework and has_numbers:
-        homework_warning = """
-
-⚠️ THIS LOOKS LIKE A HOMEWORK PROBLEM - DO NOT SOLVE IT!
-Instead:
-1. Ask what they've tried
-2. Teach the method with a DIFFERENT example
-3. Guide them to solve it themselves
-4. Never give the numerical answer to their specific problem"""
-        base_prompt += homework_warning
+    # Call Groq
+    client = Groq(api_key=os.environ.get('GROQ_API_KEY'))
     
-    # Add personalization if student is logged in
-    if student_id:
-        base_prompt = build_personalized_prompt(student_id, base_prompt)
-        
-        # Check for struggle and adapt approach
-        if subject and classroom_id:
-            is_struggling = detect_struggle(student_id, classroom_id, user_subject, conversation)
-            
-            if is_struggling:
-                base_prompt += """
-
-🔄 STRUGGLE DETECTED: Student has asked about this topic multiple times.
-CHANGE YOUR STRATEGY:
-1. Step back - check if they understand the prerequisites
-2. Try a completely different explanation approach (visual, analogy, step-by-step)
-3. Use Socratic questions to find the SPECIFIC gap in understanding
-4. Consider they may have a fundamental misconception blocking progress
-DO NOT repeat the same type of explanation you've been using."""
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+        temperature=0.4,
+        max_tokens=500
+    )
     
-    # Build full prompt with conversation context
-    conversation_context = conversation[-6:] if len(conversation) > 6 else conversation
-    conversation_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation_context])
+    ai_answer = response.choices[0].message.content
     
-    full_prompt = f"""{base_prompt}
-
-CURRENT CONTEXT:
-Subject: {user_subject}
-Student's question: "{user_input}"
-
-Recent conversation:
-{conversation_text}
-
-Your response (remember to use LaTeX for all math):"""
-    
-    # Get AI response
-    genai_client = get_genai_client()
-    model = genai_client.GenerativeModel(model_name)
-    response = model.generate_content(prompt)
-    ai_answer = response.text
-    
-    # Update conversation history
+    # Update conversation
     conversation.append({"role": "user", "content": user_input})
-    conversation.append({"role": "ai", "content": ai_answer})
+    conversation.append({"role": "assistant", "content": ai_answer})
     session['conversation'] = conversation
-    
-    # Update student profile periodically (every 3 exchanges)
-    if student_id and len(conversation) % 6 == 0:
-        try:
-            update_student_profile_from_conversation(student_id, conversation)
-            logger.info(f"Updated profile for student {student_id}")
-        except Exception as e:
-            logger.error(f"Error updating student profile: {e}")
     
     return ai_answer
 
@@ -204,63 +140,111 @@ def get_teaching_prompt(teaching_mode):
     """Get base teaching prompt based on mode (includes FORMATTING_GUIDE)"""
     
     if teaching_mode == 'socratic':
-        base = """You are Socrates, a master teacher who guides through questions.
-        
-CRITICAL RULES:
-- NEVER solve homework problems directly
-- NEVER give direct answers to calculation questions
-- If asked to solve/calculate, teach the METHOD instead
-- Ask what they've tried first
-- Guide them step-by-step to solve it themselves
+        base = """You are a Socratic tutor who teaches through guided discovery.
 
-Ask ONE thought-provoking question that helps the student discover the answer themselves."""
+YOUR TEACHING FLOW:
+1. When student asks a question, give a BRIEF hint or guiding question
+2. If they're stuck after ONE attempt, give a fuller explanation
+3. After explaining, ask ONE verification question to check understanding
+4. If they answer correctly, move on. If not, explain the gap and move on.
+
+CRITICAL RULES:
+- NEVER solve their specific homework problems
+- If asked to "solve this" or "calculate this", say: "I'll teach you the method, but you'll solve your specific problem"
+- Teach with a DIFFERENT example, then guide them through theirs
+
+RESPONSE LENGTH: Keep responses under 4 sentences unless explaining a complex concept."""
         
     elif teaching_mode == 'direct':
-        base = """You are a helpful tutor who explains concepts clearly.
+        base = """You are a clear, direct tutor who explains concepts efficiently.
+
+YOUR TEACHING FLOW:
+1. Student asks → Give a FULL, clear explanation with examples (3-5 sentences)
+2. After explaining, ask ONE quick verification question: "To make sure you've got it: [question]"
+3. If they answer correctly → "Great! What's next?"
+4. If they answer incorrectly → Point out the gap (1 sentence), give the right answer, move on
 
 CRITICAL RULES:
-- NEVER solve homework problems directly
-- NEVER give direct numerical answers to their specific problems
-- If they ask you to solve something, say: "I can't solve it for you, but I can teach you how!"
-- Explain the METHOD and PROCESS clearly
-- Give a DIFFERENT example (not their exact problem)
-- Then ask them to try their problem using the method you taught
+- NEVER solve their specific homework problems
+- If they ask you to solve/calculate, respond: "I can't solve it for you, but here's how to solve it yourself: [explain method]"
+- Give a DIFFERENT example problem, then say "Now try yours using these steps"
 
-Teach concepts and methods, not answers."""
+RESPONSE LENGTH: 3-5 sentences for explanations, 1 sentence for follow-ups."""
         
-    else:  # guided (default)
-        base = """You are an adaptive tutor who teaches effectively without doing the work for students.
+    else:  # guided (default - RECOMMENDED)
+        base = """You are a helpful tutor who explains concepts clearly and knows when to stop.
 
-CRITICAL RULES - NEVER BREAK THESE:
-1. NEVER solve their homework problems directly
-2. NEVER give direct answers to "solve this" or "calculate this" questions
-3. If they ask you to solve/calculate, respond with: "I can't solve it for you, but I can teach you how to solve it yourself!"
+YOUR TEACHING FLOW:
+1. Student asks a question → Give a COMPLETE, clear explanation (3-5 sentences)
+2. Ask verification questions ONLY if needed to ensure understanding
+3. **CRITICALLY: Judge when the student "gets it" and STOP questioning**
 
-YOUR TEACHING APPROACH:
-1. If it's a homework-like question (solve, calculate, find):
-   - First ask: "What have you tried so far?"
-   - Teach the general method/concept
-   - Give a DIFFERENT example (not their problem)
-   - Guide them to solve THEIR problem step-by-step
-   
-2. If it's a concept question (what is, how does, why):
-   - Give a clear explanation with examples
-   - Check their understanding with a follow-up question
-   
-3. If they're stuck:
-   - Ask what specific part is confusing
-   - Break it into smaller steps
-   - Guide, don't solve
+WHEN TO STOP ASKING QUESTIONS:
+- Student answers correctly and their answer shows clear understanding
+- Student is giving frustrated/short answers (like "yes", "ok", "I get it")
+- Student explicitly asks to move on
 
-Be encouraging but firm: you teach methods, students solve problems."""
-    
-    # Append the formatting guide to all modes
-    return base + "\n" + FORMATTING_GUIDE
-# ============ MEMORY & PERSONALIZATION ============
+SIGNS STUDENT UNDERSTANDS (stop questioning):
+- Gives correct answer with reasoning
+- Can apply concept to new example
+- Asks intelligent follow-up question
+- Says "that makes sense" or similar
 
+SIGNS TO ASK ONE MORE QUESTION:
+- Answer is correct but seems memorized/guessed
+- Answer is partially correct (misses key point)
+- Concept is complex with multiple parts
+
+CRITICAL RULES:
+- Explain FIRST, ask questions to verify understanding
+- When you sense understanding, STOP and ask "What's next?"
+- NEVER turn verification into an interrogation
+- NEVER solve homework - teach method with different example
+- If student seems annoyed by questions, apologize and move on
+
+SELF-CHECK before asking another question:
+Ask yourself: "Does this student clearly understand, or do I genuinely need to verify more?"
+If they understand → STOP
+If genuinely unsure → Ask ONE more question, then stop regardless
+
+EXAMPLE:
+Student: "explain osmosis"
+You: "[Full, clear explanation]
+
+Quick check: What direction does water move in osmosis?"
+Student: "toward higher solute concentration because that's lower water concentration"
+You: "Perfect! You clearly understand the concept. What would you like to explore next?"
+[STOP - their answer showed reasoning, not just memorization]
+
+COUNTER-EXAMPLE (what NOT to do):
+Student: "explain osmosis"  
+You: "[Explanation] What direction does water move?"
+Student: "toward higher solute"
+You: "Correct! Now what happens to a cell in pure water?" ❌ STOP HERE
+Student: "it swells"
+You: "Right! And why does it swell?" ❌ THEY ALREADY GET IT, STOP
+[This is interrogation, not teaching]
+
+VERIFICATION QUALITY:
+- Simple factual questions ("where is X stored?") → Accept short correct answers
+- Complex concepts (laws, processes) → Look for reasoning, not just facts
+- If answer is CORRECT but seems MEMORIZED → Ask "Can you explain WHY?" once
+
+FOR COMPLEX CONCEPTS WITH MULTIPLE PARTS:
+- Identify the key components (e.g., Coulomb's Law has: charge strength, distance, attraction/repulsion)
+- Ask about the MOST IMPORTANT aspect first
+- If answer is correct, ask MORE about a different aspect
+- If answer is incorrect, give brief correction and ask a follow-up on the same aspect
+- Check understanding of ALL key parts, but STOP once you see clear comprehension
+
+If you think student understands, ask 1 more question that asks the student 
+- Can apply concept to new example
+
+TRUST YOUR JUDGMENT: You're smart enough to tell when someone understands vs. when they're guessing."""
+    return base + FORMATTING_GUIDE
 def get_student_profile(student_id, classroom_id):
     """Get or create student learning profile from Supabase"""
-    from supabase import create_client
+    from supabase import    create_client
     
     supabase_url = os.environ.get('SUPABASE_URL')
     supabase_key = os.environ.get('SUPABASE_ANON_KEY')
@@ -320,18 +304,22 @@ Provide a JSON response with:
 Only include what's clearly evident. Return valid JSON only."""
 
     try:
-        genai_client = get_genai_client()
-        model = genai_client.GenerativeModel(model_name)
-        response = model.generate_content(prompt)
+        # CHANGE THIS PART:
+        client = Groq(api_key=os.environ.get('GROQ_API_KEY'))
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": analysis_prompt}],
+            temperature=0.3,
+            max_tokens=300
+        )
         
         # Extract JSON from response
         import json
-        analysis_text = response.text
+        analysis_text = response.choices[0].message.content
         # Try to find JSON in response
         json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)
         if json_match:
-            insights = json.loads(json_match.group())
-            
+            insights = json.loads(json_match.group())            
             # Get current profile
             profile = get_student_profile(student_id, None)
             
@@ -514,6 +502,7 @@ def set_mode():
 
 # Add endpoint for "explain this" button
 @app.route('/api/explain', methods=['POST', 'OPTIONS'])
+@app.route('/api/explain', methods=['POST', 'OPTIONS'])
 def explain():
     if request.method == 'OPTIONS': return '', 200
     data = request.json or {}
@@ -524,11 +513,16 @@ def explain():
     Use analogies and examples. Break it down into easy-to-understand steps.
     Keep it concise (3-4 sentences) but comprehensive."""
     
-    genai_client = get_genai_client()
-    model = genai_client.GenerativeModel(model_name)
-    response = model.generate_content(prompt)    
-    return jsonify({"answer": response.text})
-# Math helpers
+    # CHANGE THIS PART:
+    client = Groq(api_key=os.environ.get('GROQ_API_KEY'))
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5,
+        max_tokens=300
+    )
+    
+    return jsonify({"answer": response.choices[0].message.content})# Math helpers
 def _extract_json_block(text: str) -> str:
     if not text: return ""
     start = text.find('{'); end = text.rfind('}')
@@ -541,34 +535,6 @@ def _get_decimal_places() -> int:
 def _normalize_numeric_string(value: float, places: int) -> str:
     s = f"{round(value, places):.{places}f}"
     return s.rstrip('0').rstrip('.') if '.' in s else s
-
-def _generate_math_set(concept: str):
-    prompt = f"""
-    Create exactly 10 unique practice problems testing the concept: "{concept}"
-    Rules:
-    - The 10 problems must gradually increase in difficulty from 1 (easiest) to 10 (hardest).
-    - Include a mix of numeric, word-based, and symbolic problems.
-    - Output STRICT JSON: {{"problems":[{{"number":1,"question":"...","answer":"..."}},{{"number":10,"question":"...","answer":"..."}}]}}
-    """
-    client = get_genai_client()
-    raw = client.models.generate_content(model=model_name, contents=prompt).text
-    try:
-        data = json.loads(_extract_json_block(raw))
-        problems = data.get("problems", [])
-    except:
-        problems = []
-    
-    formatted, places = [], _get_decimal_places()
-    for idx, p in enumerate(problems[:10], start=1):
-        q = p.get("question") if isinstance(p, dict) else None
-        a = p.get("answer") if isinstance(p, dict) else None
-        if q and a is not None:
-            try: 
-                a_str = _normalize_numeric_string(float(str(a).replace(',','').strip()), places)
-            except: 
-                a_str = str(a).strip()
-            formatted.append({"number": idx, "question": q, "answer": a_str})
-    return formatted
 
 def _parse_user_answers(text: str) -> dict:
     answers = {}
@@ -592,17 +558,6 @@ def _answers_equal(expected: str, given: str) -> bool:
         places = _get_decimal_places()
         return _normalize_numeric_string(en, places) == _normalize_numeric_string(gn, places)
     return str(expected).strip() == str(given).strip()
-
-def _generate_hint(question: str, correct_answer: str) -> str:
-    try:
-        client = get_genai_client()
-        raw = client.models.generate_content(
-            model=model_name,
-            contents=f"Give a short hint without the final answer.\nQ: {question}\nA: {correct_answer}"
-        ).text
-        return (raw or "Check your setup carefully.").strip()
-    except:
-        return "Re-check your steps."
 
 def _looks_like_answers(text: str) -> bool:
     if not text: return False
@@ -647,112 +602,22 @@ def ask():
     user_input = data.get('message', '')
     subject = get_subject()
     
-    # Get student and classroom from session (set during login)
-    student_id = session.get('user_id')  # This is the student's UUID from Supabase
+    # Get student and classroom from session
+    student_id = session.get('user_id')
     classroom_id = session.get('classroom_id')
     
-    # Get conversation history
+    # Call the main get_answer function (which already uses Groq)
+    ai_answer = get_answer(subject, user_input)
+    
+    # Update student profile periodically
     conversation = get_conversation()
-    
-    # === NEW: Detect struggle ===
-    if subject and student_id and classroom_id:
-        is_struggling = detect_struggle(student_id, classroom_id, subject, conversation)
-        
-        if is_struggling:
-            # Add instruction to change approach
-            session['ai_should_change_approach'] = True
-    
-    # Math mode (keep existing logic)
-    if session.get('math_mode') is not None and subject == 'Math':
-        math_state = session.get('math_mode') or {}
-        
-        # [Keep all your existing math mode logic here]
-        # ... (unchanged)
-        pass
-    
-    # === NEW: Build personalized prompt ===
-    base_prompt = get_teaching_prompt(session.get('teaching_mode', 'guided'))
-    
-    if student_id:
-        personalized_prompt = build_personalized_prompt(student_id, base_prompt)
-        
-        # Add struggle adaptation if detected
-        if session.get('ai_should_change_approach'):
-            personalized_prompt += """
-
-⚠️ STRUGGLE DETECTED: Student has asked about this topic multiple times.
-CHANGE YOUR STRATEGY:
-1. Step back to check prerequisite understanding
-2. Try a completely different explanation approach
-3. Use Socratic questions to find the specific gap
-4. Consider they may have a fundamental misconception
-DO NOT repeat the same type of explanation."""
-            session['ai_should_change_approach'] = False  # Reset
-    else:
-        personalized_prompt = base_prompt
-    
-    # Build full prompt with conversation history
-    prompt = f"""{personalized_prompt}
-
-Subject: {subject}
-Student's message: "{user_input}"
-
-Recent conversation: {conversation[-4:] if len(conversation) > 4 else conversation}
-
-Your response (be concise, 3-4 sentences max):"""
-    
-    # Get AI response
-    genai_client = get_genai_client()
-    model = genai_client.GenerativeModel(model_name)
-    response = model.generate_content(prompt)    
-    ai_answer = response.text
-    
-    # Update conversation
-    conversation.append({"role": "user", "content": user_input})
-    conversation.append({"role": "ai", "content": ai_answer})
-    session['conversation'] = conversation
-    
-    # === NEW: Update student profile periodically ===
-    if len(conversation) % 6 == 0 and student_id:  # Every 3 exchanges
+    if len(conversation) % 6 == 0 and student_id:
         try:
             update_student_profile_from_conversation(student_id, conversation)
         except Exception as e:
             logger.error(f"Error updating profile: {e}")
     
     return jsonify({"answer": ai_answer})
-
-
-def get_teaching_prompt(teaching_mode):
-    """Get base teaching prompt based on mode"""
-    
-    if teaching_mode == 'socratic':
-        base = """You are Socrates, a master teacher who guides through questions.
-        
-CRITICAL RULES:
-- NEVER solve homework problems directly
-- Ask what they've tried first
-- Guide them step-by-step to solve it themselves"""
-        
-    elif teaching_mode == 'direct':
-        base = """You are a helpful tutor who explains concepts clearly.
-
-CRITICAL RULES:
-- NEVER solve homework problems directly
-- Explain the METHOD and PROCESS clearly
-- Give a DIFFERENT example (not their exact problem)"""
-        
-    else:  # guided (default)
-        base = """You are an adaptive tutor who teaches effectively without doing the work for students.
-
-CRITICAL RULES:
-1. NEVER solve their homework problems directly
-2. If it's a homework-like question: teach the method with a different example
-3. If it's a concept question: give a clear explanation + follow-up question
-4. If they're stuck: ask what specific part is confusing"""
-    
-    # ADD THIS LINE - append the formatting guide
-    return base + "\n" + FORMATTING_GUIDE
-
 @app.route('/api/clear_session', methods=['POST'])
 def clear_session():
     session.clear()
@@ -800,10 +665,16 @@ Be specific, actionable, and encouraging. Focus on insights, not just listing to
 Summary:"""
     
     try:
-        genai_client = get_genai_client()
-        model = genai_client.GenerativeModel(model_name)
-        response = model.generate_content(prompt)        
-        summary = response.text
+        # CHANGE THIS PART:
+        client = Groq(api_key=os.environ.get('GROQ_API_KEY'))
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=800
+        )
+        summary = response.choices[0].message.content
         
         return jsonify({"ok": True, "summary": summary})
     except Exception as e:

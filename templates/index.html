@@ -1,547 +1,610 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Socratic AI</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+<head>
+  <title>Socratic AI</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- Math and Markdown rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    header {
+      background: #007aff;
+      color: white;
+      padding: 16px 20px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    
+    #topBar {
+      padding: 12px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    #topBar button, #topBar select {
+      padding: 8px 16px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    #topBar button:hover, #topBar select:hover {
+      background: #f5f5f5;
+    }
+    
+    #contactSection {
+      padding: 10px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    #contactSection a {
+      color: #5865F2;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    
+    #contactSection a:hover {
+      text-decoration: underline;
+    }
+    
+    #chatContainer {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: #f5f5f5;
+    }
+    
+    .message {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      line-height: 1.6;
+      word-wrap: break-word;
+      white-space: normal;
+    }
+    
+    .userMsg {
+      background: #007aff;
+      color: white;
+      align-self: flex-end;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+    
+    .aiMsg {
+      background: #e9ecef;
+      color: #212529;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    
+    /* Math and code styling */
+    .message code {
+      background: rgba(0, 0, 0, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+    
+    .message pre {
+      background: rgba(0, 0, 0, 0.1);
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    
+    .message pre code {
+      background: none;
+      padding: 0;
+    }
+    
+    .userMsg code {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .userMsg pre {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .message .katex {
+      font-size: 1.1em;
+    }
+    
+    .message .katex-display {
+      margin: 12px 0;
+    }
+    
+    #inputContainer {
+      padding: 16px 20px;
+      background: #fff;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    
+    #userInput {
+      flex: 1;
+      padding: 12px 15px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 12px;
+      outline: none;
+      resize: vertical;
+      min-height: 44px;
+      max-height: 150px;
+      font-family: inherit;
+    }
+    
+    #sendBtn {
+      padding: 12px 24px;
+      background: #007aff;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    
+    #sendBtn:hover {
+      background: #0051d5;
+    }
+    
+    #disclaimer {
+      padding: 6px 20px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+      background: #fff;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    #quickActions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    #quickActions button {
+      padding: 6px 12px;
+      font-size: 13px;
+      border-radius: 6px;
+      border: none;
+      color: white;
+      cursor: pointer;
+    }
+    
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-content {
+      background: #fff;
+      padding: 24px;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    
+    button.primary {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      background: #007aff;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    
+    button.primary:hover {
+      background: #0051d5;
+    }
+    
+    button.secondary {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    
+    button.secondary:hover {
+      background: #f5f5f5;
+    }
+    
+    .error {
+      color: #b00020;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    
+    .container-box {
+      max-width: 720px;
+      margin: 40px auto;
+      background: #fff;
+      padding: 24px;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+    }
+    
+    .auth-box {
+      max-width: 400px;
+      margin: 40px auto;
+      background: #fff;
+      padding: 24px;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+    }
+    
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    
+    .btn-group button {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <header>Socratic AI</header>
 
-    <style>
-      * {
-        box-sizing: border-box;
-      }
+  <div id="topBar">
+    <button onclick="startNewConversation()">New Conversation</button>
+    <select id="subjectSelect" onchange="setSubject(this.value)">
+      <option value="">Select Subject</option>
+      <option value="Biology">Biology</option>
+      <option value="Physics">Physics</option>
+      <option value="Math">Math</option>
+      <option value="Chemistry">Chemistry</option>
+    </select>
+    
+    <!-- Teaching Mode Selector -->
+    <select id="modeSelect" onchange="setMode(this.value)" style="border: 2px solid #007aff; display:none;">
+      <option value="guided">🎯 Guided (Recommended)</option>
+      <option value="socratic">💭 Socratic Questions</option>
+      <option value="direct">📚 Direct Explanations</option>
+    </select>
+    
+    <button onclick="showIntro()">How to use</button>
+    
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <button id="joinClassBtn" style="display:none;" onclick="openJoinModal()">Join Classroom</button>
+      <span id="classroomBadge" style="display:none; font-size:13px; color:#007aff; font-weight:600;"></span>
+      <button id="settingsBtn" style="display:none;" onclick="openSettings()">Settings</button>
+      <span id="userBadge" style="display:none; font-size:13px; color:#666;"></span>
+      <button id="logoutBtn" style="display:none;" onclick="logout()">Logout</button>
+    </div>
+  </div>
 
-      body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: #f5f5f5;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
+  <div id="contactSection">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span style="color:#444;">Community:</span>
+      <a href="https://discord.gg/Bv6qQTk25X" target="_blank" rel="noopener noreferrer">Join our Discord</a>
+    </div>
+  </div>
 
-      header {
-        background: #007aff;
-        color: #fff;
-        padding: 16px 20px;
-        font-size: 20px;
-        font-weight: 600;
-      }
-
-      #topBar {
-        padding: 12px 20px;
-        background: #fff;
-        border-bottom: 1px solid #e0e0e0;
-        display: flex;
-        gap: 10px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-
-      #topBar button,
-      #topBar select {
-        padding: 8px 14px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        background: #fff;
-        cursor: pointer;
-        font-size: 14px;
-      }
-
-      #topBar button:hover {
-        background: #f5f5f5;
-      }
-
-      #contactSection {
-        padding: 10px 20px;
-        background: #fff;
-        border-bottom: 1px solid #e0e0e0;
-      }
-
-      #contactSection a {
-        color: #5865f2;
-        text-decoration: none;
-        font-weight: 600;
-      }
-
-      #contactSection a:hover {
-        text-decoration: underline;
-      }
-
-      #chatContainer {
-        flex: 1;
-        overflow-y: auto;
-        padding: 20px;
-        display: none;
-        flex-direction: column;
-        gap: 12px;
-        background: #f5f5f5;
-      }
-
-      .message {
-        max-width: 70%;
-        padding: 12px 16px;
-        border-radius: 18px;
-        line-height: 1.6;
-        word-wrap: break-word;
-        background: #e9ecef;
-        color: #212529;
-        align-self: flex-start;
-      }
-
-      .userMsg {
-        background: #007aff;
-        color: #fff;
-        align-self: flex-end;
-        margin-left: auto;
-        border-bottom-right-radius: 4px;
-      }
-
-      .aiMsg {
-        border-bottom-left-radius: 4px;
-      }
-
-      #inputContainer {
-        padding: 16px 20px;
-        background: #fff;
-        border-top: 1px solid #e0e0e0;
-        display: none;
-        gap: 10px;
-        align-items: flex-end;
-      }
-
-      #userInput {
-        flex: 1;
-        padding: 12px 15px;
-        font-size: 16px;
-        border: 1px solid #ccc;
-        border-radius: 12px;
-        outline: none;
-        resize: vertical;
-        min-height: 44px;
-        max-height: 150px;
-      }
-
-      #sendBtn {
-        padding: 12px 24px;
-        background: #007aff;
-        color: #fff;
-        border: none;
-        border-radius: 12px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 16px;
-      }
-
-      #sendBtn:hover {
-        background: #0051d5;
-      }
-
-      #disclaimer {
-        display: none;
-        padding: 6px 20px;
-        font-size: 12px;
-        color: #666;
-        text-align: center;
-        background: #fff;
-        border-top: 1px solid #e0e0e0;
-      }
-
-      .container-box {
-        max-width: 720px;
-        margin: 40px auto;
-        background: #fff;
-        padding: 24px;
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-      }
-
-      .auth-box {
-        max-width: 400px;
-        margin: 40px auto;
-        background: #fff;
-        padding: 24px;
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-      }
-
-      .row {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-
-      .btn-primary {
-        background: #007aff;
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 14px;
-        cursor: pointer;
-      }
-
-      .btn-ghost {
-        background: #fff;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-        padding: 10px 14px;
-        cursor: pointer;
-      }
-
-      .error {
-        color: #b00020;
-        font-size: 13px;
-        margin-top: 8px;
-      }
-
-      .modal {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-      }
-
-      .modal-content {
-        width: 100%;
-        max-width: 420px;
-        background: #fff;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
-      }
-
-      .modal-content input {
-        width: 100%;
-        padding: 10px;
-        margin-bottom: 10px;
-        border: 1px solid #ccc;
-        border-radius: 8px;
-      }
-    </style>
-  </head>
-
-  <body>
-    <header>Socratic AI</header>
-
-    <div id="topBar">
-      <button onclick="startNewConversation()">New Conversation</button>
-      <select id="subjectSelect" onchange="setSubject(this.value)">
-        <option value="">Select Subject</option>
-        <option value="Biology">Biology</option>
-        <option value="Physics">Physics</option>
-        <option value="Math">Math</option>
-        <option value="Chemistry">Chemistry</option>
-      </select>
-      <button onclick="showIntro()">How to use</button>
-
-      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-        <button id="joinClassroomBtn" style="display:none;" onclick="openJoinModal()">Join classroom</button>
-        <button id="settingsBtn" style="display:none;" onclick="openSettings()">Settings</button>
-        <span id="userBadge" style="display:none; font-size:13px; color:#666;"></span>
-        <button id="logoutBtn" style="display:none;" onclick="logout()">Logout</button>
+  <!-- Intro Screen -->
+  <div id="introContainer" style="padding:24px; display:block;">
+    <div class="container-box">
+      <h2>Welcome to Socratic AI</h2>
+      <p style="margin: 16px 0;">Your adaptive learning companion that adjusts to your needs.</p>
+      
+      <div style="background:#f8f9fa; padding:16px; border-radius:8px; margin:16px 0;">
+        <h4 style="margin-top:0;">Three Learning Modes:</h4>
+        <ul style="text-align:left; line-height:1.8;">
+          <li><strong>🎯 Guided (Default):</strong> Mix of explanations and questions - best for most learners</li>
+          <li><strong>💭 Socratic:</strong> Learn through guided questions - great for critical thinking</li>
+          <li><strong>📚 Direct:</strong> Clear explanations - perfect when you need quick answers</li>
+        </ul>
+      </div>
+      
+      <p style="margin: 16px 0; font-size:14px; color:#666;">
+        Quick action buttons help you ask for explanations, examples, or hints anytime!
+      </p>
+      
+      <div class="btn-group">
+        <button class="primary" onclick="showSignup()">Create Account</button>
+        <button class="secondary" onclick="showLogin()">Login</button>
       </div>
     </div>
+  </div>
 
-    <div id="contactSection">
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span style="color:#444;">Community:</span>
-        <a href="https://discord.gg/Bv6qQTk25X" target="_blank" rel="noopener noreferrer">Join our Discord</a>
-      </div>
+  <!-- Login Screen -->
+  <div id="authContainer" style="padding:24px; display:none;">
+    <div class="auth-box">
+      <h3 style="margin-top:0;">Login</h3>
+      <input id="username" placeholder="Username" />
+      <input id="password" placeholder="Password" type="password" onkeypress="if(event.key==='Enter') login()" />
+      <button class="primary" onclick="login()">Login</button>
+      <button class="secondary" onclick="showSignup()">Create Account Instead</button>
+      <div id="loginError" class="error" style="display:none;"></div>
     </div>
+  </div>
 
-    <div id="introContainer" style="padding:24px; display:block;">
-      <div class="container-box">
-        <h2>Welcome to Socratic AI</h2>
-        <p style="margin:16px 0;">
-          Create an account or log in. Then click “Join classroom” to enter a class with a code.
-        </p>
-        <div class="row">
-          <button class="btn-primary" onclick="openSignupModal()">Create account</button>
-          <button class="btn-ghost" onclick="showLogin()">Login</button>
-        </div>
-      </div>
+  <!-- Signup Screen -->
+  <div id="signupContainer" style="padding:24px; display:none;">
+    <div class="auth-box">
+      <h3 style="margin-top:0;">Create Account</h3>
+      <input id="signupUsername" placeholder="Username" />
+      <input id="signupPassword" type="password" placeholder="Password (min 6 characters)" />
+      <input id="signupPassword2" type="password" placeholder="Confirm Password" />
+      <button class="primary" onclick="signup()">Create Account</button>
+      <button class="secondary" onclick="showLogin()">Login Instead</button>
+      <div id="signupError" class="error" style="display:none;"></div>
     </div>
+  </div>
 
-    <!-- Login -->
-    <div id="authContainer" style="padding:24px; display:none;">
-      <div class="auth-box">
-        <h3 style="margin-top:0;">Login</h3>
-        <input id="username" placeholder="Username" />
-        <input id="password" type="password" placeholder="Password" />
-        <button class="btn-primary" onclick="login()">Login</button>
-        <div id="loginError" class="error" style="display:none;"></div>
-      </div>
-    </div>
-
-    <!-- Chat UI -->
-    <div id="chatContainer"></div>
-    <div id="inputContainer">
+  <!-- Chat Interface -->
+  <div id="chatContainer" style="display:none;"></div>
+  
+  <div id="inputContainer" style="display:none;">
+    <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
       <textarea id="userInput" placeholder="Type your message..."></textarea>
-      <button id="sendBtn">Send</button>
-    </div>
-    <div id="disclaimer">Socratic AI can make mistakes. Check important info.</div>
-
-    <!-- Modals -->
-    <div id="settingsModal" class="modal">
-      <div class="modal-content">
-        <h3 style="margin-top:0;">Change Password</h3>
-        <input id="currentPw" type="password" placeholder="Current password" />
-        <input id="newPw" type="password" placeholder="New password (min 6 chars)" />
-        <div id="settingsError" class="error" style="display:none;"></div>
-        <div class="row">
-          <button class="btn-primary" onclick="savePassword()">Save</button>
-          <button class="btn-ghost" onclick="closeSettings()">Cancel</button>
-        </div>
+      
+      <!-- Quick action buttons -->
+      <div id="quickActions">
+        <button onclick="quickExplain()" style="background:#28a745;">
+          💡 Explain this concept
+        </button>
+        <button onclick="quickExample()" style="background:#17a2b8;">
+          📝 Give me an example
+        </button>
+        <button onclick="quickHint()" style="background:#ffc107;">
+          🔍 I need a hint
+        </button>
       </div>
     </div>
+    <button id="sendBtn">Send</button>
+  </div>
 
-    <div id="signupModal" class="modal">
-      <div class="modal-content">
-        <h3 style="margin-top:0;">Create Account</h3>
-        <input id="suUsername" placeholder="Username" />
-        <input id="suPassword" type="password" placeholder="Password (min 6 chars)" />
-        <input id="suPassword2" type="password" placeholder="Confirm password" />
-        <div id="signupError" class="error" style="display:none;"></div>
-        <div class="row">
-          <button class="btn-primary" onclick="signup()">Create</button>
-          <button class="btn-ghost" onclick="closeSignupModal()">Cancel</button>
-        </div>
-      </div>
+  <div id="disclaimer" style="display:none;">Socratic AI can make mistakes. Check important info.</div>
+
+  <!-- Modals -->
+  
+  <!-- Join Classroom Modal -->
+  <div id="joinModal" class="modal">
+    <div class="modal-content">
+      <h3 style="margin-top:0;">Join Classroom</h3>
+      <input id="classCode" placeholder="Enter class code (e.g., ABC123)" />
+      <div id="joinError" class="error" style="display:none;"></div>
+      <button class="primary" onclick="joinClassroom()">Join</button>
+      <button class="secondary" onclick="closeJoinModal()">Cancel</button>
     </div>
+  </div>
 
-    <div id="joinClassroomModal" class="modal">
-      <div class="modal-content">
-        <h3 style="margin-top:0;">Join Classroom</h3>
-        <input id="joinCodeModal" placeholder="Enter class code (e.g., ABC123)" />
-        <div id="joinClassroomError" class="error" style="display:none;"></div>
-        <div class="row">
-          <button class="btn-primary" onclick="joinClassroom()">Join</button>
-          <button class="btn-ghost" onclick="closeJoinModal()">Cancel</button>
-        </div>
-      </div>
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <h3 style="margin-top:0;">Change Password</h3>
+      <input id="currentPw" type="password" placeholder="Current password" />
+      <input id="newPw" type="password" placeholder="New password (min 6 chars)" />
+      <div id="settingsError" class="error" style="display:none;"></div>
+      <button class="primary" onclick="savePassword()">Save</button>
+      <button class="secondary" onclick="closeSettings()">Cancel</button>
     </div>
+  </div>
 
-    <script>
+  <script>
     // Supabase configuration
     const SUPABASE_URL = 'https://ssowfoqwoyoplavkgkcc.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNzb3dmb3F3b3lvcGxhdmtna2NjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA2MDM3NzQsImV4cCI6MjA3NjE3OTc3NH0.RRtcoh61Gjv16SWEavP9_I5cih0fyyRJSKXA0y4NBNk';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // DOM elements
-    const chatContainer = document.getElementById('chatContainer');
-    const inputContainer = document.getElementById('inputContainer');
-    const disclaimer = document.getElementById('disclaimer');
-    const userBadge = document.getElementById('userBadge');
-    const settingsBtn = document.getElementById('settingsBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const joinClassroomBtn = document.getElementById('joinClassroomBtn');
-    const input = document.getElementById('userInput');
-    const sendBtn = document.getElementById('sendBtn');
-
     let currentStudent = null;
     let currentClassroom = null;
 
-    // Utility: Hash passwords using SHA-256
+    // Password hashing using Web Crypto API
     async function hashPassword(password) {
-      const enc = new TextEncoder().encode(password);
-      const buf = await crypto.subtle.digest('SHA-256', enc);
-      return Array.from(new Uint8Array(buf))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      return hashHex;
     }
 
-    // UI state toggle
-    function setSignedInUI(signedIn) {
-      userBadge.style.display = signedIn ? 'inline' : 'none';
-      settingsBtn.style.display = signedIn ? 'inline-block' : 'none';
-      logoutBtn.style.display = signedIn ? 'inline-block' : 'none';
-      joinClassroomBtn.style.display = signedIn ? 'inline-block' : 'none';
-      chatContainer.style.display = signedIn ? 'flex' : 'none';
-      inputContainer.style.display = signedIn ? 'flex' : 'none';
-      disclaimer.style.display = signedIn ? 'block' : 'none';
-    }
-
-    // Navigation
+    // Navigation functions
     function showIntro() {
-      chatContainer.style.display = 'none';
-      document.getElementById('authContainer').style.display = 'none';
+      hideAll();
       document.getElementById('introContainer').style.display = 'block';
-      inputContainer.style.display = 'none';
-      disclaimer.style.display = 'none';
     }
 
     function showLogin() {
-      document.getElementById('introContainer').style.display = 'none';
+      hideAll();
       document.getElementById('authContainer').style.display = 'block';
     }
 
-    // Modals
-    function openSettings() {
-      const modal = document.getElementById('settingsModal');
-      document.getElementById('settingsError').style.display = 'none';
-      document.getElementById('currentPw').value = '';
-      document.getElementById('newPw').value = '';
-      modal.style.display = 'flex';
+    function showSignup() {
+      hideAll();
+      document.getElementById('signupContainer').style.display = 'block';
     }
 
-    function closeSettings() {
-      document.getElementById('settingsModal').style.display = 'none';
-    }
-
-    function openSignupModal() {
-      const modal = document.getElementById('signupModal');
-      document.getElementById('signupError').style.display = 'none';
-      document.getElementById('suUsername').value = '';
-      document.getElementById('suPassword').value = '';
-      document.getElementById('suPassword2').value = '';
-      modal.style.display = 'flex';
-    }
-
-    function closeSignupModal() {
-      document.getElementById('signupModal').style.display = 'none';
-    }
-
-    function openJoinModal() {
-      const modal = document.getElementById('joinClassroomModal');
-      document.getElementById('joinClassroomError').style.display = 'none';
-      document.getElementById('joinCodeModal').value = '';
-      modal.style.display = 'flex';
-    }
-
-    function closeJoinModal() {
-      document.getElementById('joinClassroomModal').style.display = 'none';
-    }
-
-    // Account management
-    async function signup() {
-      const u = document.getElementById('suUsername').value.trim();
-      const p1 = document.getElementById('suPassword').value;
-      const p2 = document.getElementById('suPassword2').value;
-      const err = document.getElementById('signupError');
-      err.style.display = 'none';
-
-      if (!u || !p1 || !p2) return showError(err, 'All fields are required');
-      if (p1.length < 6) return showError(err, 'Password must be at least 6 characters');
-      if (p1 !== p2) return showError(err, 'Passwords do not match');
-
-      try {
-        const hash = await hashPassword(p1);
-        const { data: existing } = await supabase
-          .from('students')
-          .select('id')
-          .eq('username', u)
-          .maybeSingle();
-
-        if (existing) return showError(err, 'Username already exists');
-
-        const { data: created, error } = await supabase
-          .from('students')
-          .insert({ username: u, password_hash: hash })
-          .select()
-          .single();
-
-        if (error || !created) throw error || new Error('Create failed');
-
-        currentStudent = created;
-        localStorage.setItem('currentStudent', JSON.stringify(created));
-        userBadge.textContent = `Signed in as ${created.username}`;
-        closeSignupModal();
-        setSignedInUI(true);
-        document.getElementById('authContainer').style.display = 'none';
-        document.getElementById('introContainer').style.display = 'none';
-      } catch (e) {
-        showError(err, e?.message || 'Could not create account');
+    function showChat() {
+      hideAll();
+      document.getElementById('chatContainer').style.display = 'flex';
+      document.getElementById('inputContainer').style.display = 'flex';
+      document.getElementById('disclaimer').style.display = 'block';
+      document.getElementById('userBadge').textContent = `Signed in as ${currentStudent.username}`;
+      document.getElementById('userBadge').style.display = 'inline';
+      document.getElementById('settingsBtn').style.display = 'inline-block';
+      document.getElementById('logoutBtn').style.display = 'inline-block';
+      document.getElementById('joinClassBtn').style.display = 'inline-block';
+      
+      if (currentClassroom) {
+        document.getElementById('classroomBadge').textContent = `📚 ${currentClassroom.name}`;
+        document.getElementById('classroomBadge').style.display = 'inline';
+        document.getElementById('modeSelect').style.display = 'inline-block';
       }
     }
 
-    async function login() {
-      const u = document.getElementById('username').value.trim();
-      const p = document.getElementById('password').value;
-      const err = document.getElementById('loginError');
-      err.style.display = 'none';
+    function hideAll() {
+      document.getElementById('introContainer').style.display = 'none';
+      document.getElementById('authContainer').style.display = 'none';
+      document.getElementById('signupContainer').style.display = 'none';
+      document.getElementById('chatContainer').style.display = 'none';
+      document.getElementById('inputContainer').style.display = 'none';
+      document.getElementById('disclaimer').style.display = 'none';
+    }
 
-      if (!u || !p) return showError(err, 'Username and password required');
+    // Authentication functions
+    async function signup() {
+      const username = document.getElementById('signupUsername').value.trim();
+      const password = document.getElementById('signupPassword').value;
+      const password2 = document.getElementById('signupPassword2').value;
+      const signupError = document.getElementById('signupError');
+      signupError.style.display = 'none';
 
-      const hash = await hashPassword(p);
+      if (!username || !password || !password2) {
+        signupError.textContent = 'All fields are required';
+        signupError.style.display = 'block';
+        return;
+      }
+
+      if (password.length < 6) {
+        signupError.textContent = 'Password must be at least 6 characters';
+        signupError.style.display = 'block';
+        return;
+      }
+
+      if (password !== password2) {
+        signupError.textContent = 'Passwords do not match';
+        signupError.style.display = 'block';
+        return;
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      // Check if username exists
+      const { data: existing } = await supabase
+        .from('students')
+        .select('id')
+        .eq('username', username)
+        .single();
+
+      if (existing) {
+        signupError.textContent = 'Username already exists';
+        signupError.style.display = 'block';
+        return;
+      }
+
+      // Create student
       const { data: student, error } = await supabase
         .from('students')
-        .select('*')
-        .eq('username', u)
-        .maybeSingle();
+        .insert({ username, password_hash: passwordHash })
+        .select()
+        .single();
 
-      if (error || !student || student.password_hash !== hash)
-        return showError(err, 'Invalid credentials');
+      if (error || !student) {
+        signupError.textContent = 'Could not create account';
+        signupError.style.display = 'block';
+        return;
+      }
 
       currentStudent = student;
       localStorage.setItem('currentStudent', JSON.stringify(student));
-      userBadge.textContent = `Signed in as ${student.username}`;
-      document.getElementById('authContainer').style.display = 'none';
-      document.getElementById('introContainer').style.display = 'none';
-      setSignedInUI(true);
+      showChat();
     }
 
-    async function savePassword() {
-      const currentPw = document.getElementById('currentPw').value;
-      const newPw = document.getElementById('newPw').value;
-      const err = document.getElementById('settingsError');
-      err.style.display = 'none';
+    async function login() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const loginError = document.getElementById('loginError');
+      loginError.style.display = 'none';
 
-      if (!currentStudent) return showError(err, 'Not signed in');
-      if (!currentPw || !newPw) return showError(err, 'Both fields are required');
-      if (newPw.length < 6) return showError(err, 'New password must be at least 6 characters');
+      if (!username || !password) {
+        loginError.textContent = 'Username and password required';
+        loginError.style.display = 'block';
+        return;
+      }
 
-      const currentHash = await hashPassword(currentPw);
-      if (currentStudent.password_hash !== currentHash)
-        return showError(err, 'Current password is incorrect');
+      const passwordHash = await hashPassword(password);
 
-      const newHash = await hashPassword(newPw);
-      const { error } = await supabase
+      const { data: student, error } = await supabase
         .from('students')
-        .update({ password_hash: newHash })
-        .eq('id', currentStudent.id);
-
-      if (error) return showError(err, 'Could not update password');
-
-      currentStudent.password_hash = newHash;
-      localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
-      alert('Password updated successfully!');
-      closeSettings();
-    }
-
-    async function joinClassroom() {
-      const code = document.getElementById('joinCodeModal').value.trim().toUpperCase();
-      const err = document.getElementById('joinClassroomError');
-      err.style.display = 'none';
-
-      if (!currentStudent) return showError(err, 'Please login first');
-      if (!code) return showError(err, 'Enter a class code');
-
-      const { data: classroom, error } = await supabase
-        .from('classrooms')
         .select('*')
-        .eq('join_code', code)
-        .maybeSingle();
+        .eq('username', username)
+        .single();
 
-      if (error || !classroom) return showError(err, 'Invalid class code');
+      if (error || !student || student.password_hash !== passwordHash) {
+        loginError.textContent = 'Invalid credentials';
+        loginError.style.display = 'block';
+        return;
+      }
 
-      const { error: enrollErr } = await supabase
+      currentStudent = student;
+      localStorage.setItem('currentStudent', JSON.stringify(student));
+      
+      // Check for existing classroom enrollment
+      const { data: enrollments } = await supabase
         .from('enrollments')
-        .insert({ classroom_id: classroom.id, student_id: currentStudent.id });
-
-      if (enrollErr && !String(enrollErr.message).includes('duplicate'))
-        return showError(err, enrollErr.message || 'Could not join classroom');
-
-      currentClassroom = classroom;
-      localStorage.setItem('currentClassroom', JSON.stringify(classroom));
-      alert(`Joined classroom: ${classroom.name}`);
-      closeJoinModal();
-      setSignedInUI(true);
+        .select('classroom_id, classrooms(*)')
+        .eq('student_id', student.id);
+      
+      if (enrollments && enrollments.length > 0) {
+        currentClassroom = enrollments[0].classrooms;
+        localStorage.setItem('currentClassroom', JSON.stringify(currentClassroom));
+      }
+      
+      showChat();
     }
 
     async function logout() {
@@ -549,33 +612,203 @@
       currentClassroom = null;
       localStorage.removeItem('currentStudent');
       localStorage.removeItem('currentClassroom');
-      setSignedInUI(false);
-      showIntro();
-      chatContainer.innerHTML = '';
+      document.getElementById('userBadge').style.display = 'none';
+      document.getElementById('settingsBtn').style.display = 'none';
+      document.getElementById('logoutBtn').style.display = 'none';
+      document.getElementById('joinClassBtn').style.display = 'none';
+      document.getElementById('classroomBadge').style.display = 'none';
+      document.getElementById('modeSelect').style.display = 'none';
+      
       await fetch('/api/clear_session', { method: 'POST' });
+      
+      showIntro();
+      startNewConversation();
     }
 
-    // Session restore
-    (function restoreSession() {
-      const s = localStorage.getItem('currentStudent');
-      const c = localStorage.getItem('currentClassroom');
-      if (s) {
-        currentStudent = JSON.parse(s);
-        userBadge.textContent = `Signed in as ${currentStudent.username}`;
-        setSignedInUI(true);
+    // Classroom functions
+    function openJoinModal() {
+      document.getElementById('joinModal').style.display = 'flex';
+      document.getElementById('classCode').value = '';
+      document.getElementById('joinError').style.display = 'none';
+    }
+
+    function closeJoinModal() {
+      document.getElementById('joinModal').style.display = 'none';
+    }
+
+    async function joinClassroom() {
+      const code = document.getElementById('classCode').value.trim().toUpperCase();
+      const joinError = document.getElementById('joinError');
+      joinError.style.display = 'none';
+
+      if (!code) {
+        joinError.textContent = 'Please enter a class code';
+        joinError.style.display = 'block';
+        return;
       }
-      if (c) currentClassroom = JSON.parse(c);
+
+      const { data: classroom, error } = await supabase
+        .from('classrooms')
+        .select('*')
+        .eq('join_code', code)
+        .single();
+
+      if (error || !classroom) {
+        joinError.textContent = 'Invalid class code';
+        joinError.style.display = 'block';
+        return;
+      }
+
+      // Check if already enrolled
+      const { data: existingEnrollment } = await supabase
+        .from('enrollments')
+        .select('*')
+        .eq('classroom_id', classroom.id)
+        .eq('student_id', currentStudent.id)
+        .single();
+
+      if (!existingEnrollment) {
+        // Create enrollment
+        const { error: enrollError } = await supabase
+          .from('enrollments')
+          .insert({
+            classroom_id: classroom.id,
+            student_id: currentStudent.id
+          });
+
+        if (enrollError) {
+          joinError.textContent = 'Could not join classroom';
+          joinError.style.display = 'block';
+          return;
+        }
+      }
+
+      currentClassroom = classroom;
+      localStorage.setItem('currentClassroom', JSON.stringify(classroom));
+      closeJoinModal();
+      showChat();
+    }
+
+    // Settings functions
+    function openSettings() {
+      document.getElementById('settingsModal').style.display = 'flex';
+      document.getElementById('currentPw').value = '';
+      document.getElementById('newPw').value = '';
+      document.getElementById('settingsError').style.display = 'none';
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').style.display = 'none';
+    }
+
+    async function savePassword() {
+      const currentPw = document.getElementById('currentPw').value;
+      const newPw = document.getElementById('newPw').value;
+      const errDiv = document.getElementById('settingsError');
+
+      if (!currentPw || !newPw) {
+        errDiv.textContent = 'Both fields are required';
+        errDiv.style.display = 'block';
+        return;
+      }
+
+      if (newPw.length < 6) {
+        errDiv.textContent = 'New password must be at least 6 characters';
+        errDiv.style.display = 'block';
+        return;
+      }
+
+      const currentHash = await hashPassword(currentPw);
+      if (currentStudent.password_hash !== currentHash) {
+        errDiv.textContent = 'Current password is incorrect';
+        errDiv.style.display = 'block';
+        return;
+      }
+
+      const newHash = await hashPassword(newPw);
+      const { error } = await supabase
+        .from('students')
+        .update({ password_hash: newHash })
+        .eq('id', currentStudent.id);
+
+      if (error) {
+        errDiv.textContent = 'Could not update password';
+        errDiv.style.display = 'block';
+        return;
+      }
+
+      currentStudent.password_hash = newHash;
+      localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
+      alert('Password updated successfully!');
+      closeSettings();
+    }
+
+    // Check for existing session on load
+    (function checkSession() {
+      const student = localStorage.getItem('currentStudent');
+      const classroom = localStorage.getItem('currentClassroom');
+      if (student) {
+        currentStudent = JSON.parse(student);
+        if (classroom) {
+          currentClassroom = JSON.parse(classroom);
+        }
+        showChat();
+      }
     })();
 
-    // Chat functions
+    // Chat functionality
+    const chatContainer = document.getElementById('chatContainer');
+    const input = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // Enhanced message rendering with LaTeX and Markdown
     function addMessage(text, sender) {
       const msgDiv = document.createElement('div');
       msgDiv.className = `message ${sender}`;
-      try {
-        msgDiv.innerHTML = marked.parse(text || '');
-      } catch {
-        msgDiv.textContent = text || '';
-      }
+      
+      // Extract and render LaTeX
+      const mathExpressions = [];
+      let processedText = text;
+      
+      // Extract display math
+      processedText = processedText.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+        const index = mathExpressions.length;
+        mathExpressions.push({ latex, display: true });
+        return `MATHPLACEHOLDER${index}MATHPLACEHOLDER`;
+      });
+      
+      // Extract inline math
+      processedText = processedText.replace(/\$([^\$\n]+?)\$/g, (match, latex) => {
+        const index = mathExpressions.length;
+        mathExpressions.push({ latex, display: false });
+        return `MATHPLACEHOLDER${index}MATHPLACEHOLDER`;
+      });
+      
+      // Convert markdown to HTML
+      marked.setOptions({ breaks: true, gfm: true });
+      processedText = marked.parse(processedText);
+      
+      msgDiv.innerHTML = processedText;
+      
+      // Replace placeholders with rendered math
+      mathExpressions.forEach((expr, index) => {
+        const placeholder = `MATHPLACEHOLDER${index}MATHPLACEHOLDER`;
+        try {
+          const renderedMath = katex.renderToString(expr.latex, {
+            displayMode: expr.display,
+            throwOnError: false,
+            output: 'html'
+          });
+          msgDiv.innerHTML = msgDiv.innerHTML.replace(placeholder, renderedMath);
+        } catch (e) {
+          console.error('KaTeX error:', e);
+          msgDiv.innerHTML = msgDiv.innerHTML.replace(
+            placeholder, 
+            expr.display ? `$$${expr.latex}$$` : `$${expr.latex}$`
+          );
+        }
+      });
+      
       chatContainer.appendChild(msgDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }
@@ -583,19 +816,16 @@
     async function sendMessage() {
       const message = input.value.trim();
       if (!message) return;
-      if (!currentStudent) return alert('Please login first');
-      if (!currentClassroom) return alert('Join a classroom to start');
-
+      
+      if (!currentClassroom) {
+        alert('Please join a classroom first');
+        return;
+      }
+      
       addMessage(message, 'userMsg');
       input.value = '';
 
-      await supabase.from('messages').insert({
-        classroom_id: currentClassroom.id,
-        student_id: currentStudent.id,
-        role: 'user',
-        subject: document.getElementById('subjectSelect').value,
-        content: message
-      });
+      await logMessage('user', message);
 
       const resp = await fetch('/api/ask', {
         method: 'POST',
@@ -603,51 +833,164 @@
         body: JSON.stringify({ message })
       });
       const data = await resp.json();
-
+      
       addMessage(data.answer, 'aiMsg');
-      await supabase.from('messages').insert({
-        classroom_id: currentClassroom.id,
-        student_id: currentStudent.id,
-        role: 'ai',
-        subject: document.getElementById('subjectSelect').value,
-        content: data.answer
-      });
+      await logMessage('ai', data.answer);
     }
 
     sendBtn.addEventListener('click', sendMessage);
-    input.addEventListener('keydown', e => {
+    input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
       }
     });
 
-    // Conversation and subject handling
     function startNewConversation() {
       chatContainer.innerHTML = '';
       document.getElementById('subjectSelect').value = '';
-      inputContainer.style.display = currentStudent ? 'flex' : 'none';
-      disclaimer.style.display = currentStudent ? 'block' : 'none';
+      document.getElementById('modeSelect').value = 'guided';
       fetch('/api/clear_session', { method: 'POST' });
     }
 
     async function setSubject(subject) {
       if (!subject) return;
+      if (!currentClassroom) {
+        alert('Please join a classroom first');
+        document.getElementById('subjectSelect').value = '';
+        return;
+      }
+      
       chatContainer.innerHTML = '';
-      inputContainer.style.display = currentStudent ? 'flex' : 'none';
-      disclaimer.style.display = currentStudent ? 'block' : 'none';
+      
       await fetch('/api/set_subject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject })
       });
+      
+      addMessage(`Subject set to ${subject}. Let's start learning!`, 'aiMsg');
     }
 
-    // Utility for displaying errors
-    function showError(element, msg) {
-      element.textContent = msg;
-      element.style.display = 'block';
+    // Teaching mode functions
+    async function setMode(mode) {
+      if (!currentClassroom) {
+        alert('Please join a classroom first');
+        return;
+      }
+      
+      await fetch('/api/set_mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+      
+      const descriptions = {
+        'guided': '🎯 Balanced approach: explanations + guiding questions',
+        'socratic': '💭 Learn through questioning and self-discovery',
+        'direct': '📚 Clear, straightforward explanations'
+      };
+      
+      addMessage(`Mode changed to: ${descriptions[mode]}`, 'aiMsg');
     }
-    </script>
-  </body>
+
+    // Quick action functions
+    async function quickExplain() {
+      if (!currentClassroom) {
+        alert('Please join a classroom first');
+        return;
+      }
+      
+      const lastUserMessage = Array.from(chatContainer.children)
+        .filter(el => el.classList.contains('userMsg'))
+        .pop();
+      
+      if (!lastUserMessage) {
+        addMessage("Ask me a question first, then I can explain!", 'aiMsg');
+        return;
+      }
+      
+      addMessage("💡 Please explain this in simple terms", 'userMsg');
+      
+      const resp = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: "Please explain this concept in simple, clear terms with examples."
+        })
+      });
+      const data = await resp.json();
+      addMessage(data.answer, 'aiMsg');
+      
+      await logMessage('user', "💡 Please explain this in simple terms");
+      await logMessage('ai', data.answer);
+    }
+
+    async function quickExample() {
+      if (!currentClassroom) {
+        alert('Please join a classroom first');
+        return;
+      }
+      
+      addMessage("📝 Can you give me a concrete example?", 'userMsg');
+      
+      const resp = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: "Can you give me a concrete, real-world example to illustrate this concept?"
+        })
+      });
+      const data = await resp.json();
+      addMessage(data.answer, 'aiMsg');
+      
+      await logMessage('user', "📝 Can you give me a concrete example?");
+      await logMessage('ai', data.answer);
+    }
+
+    async function quickHint() {
+      if (!currentClassroom) {
+        alert('Please join a classroom first');
+        return;
+      }
+      
+      // Find the last AI question (not just any message)
+      const lastAiQuestion = Array.from(chatContainer.children)
+        .filter(el => el.classList.contains('aiMsg'))
+        .pop();
+      
+      if (!lastAiQuestion || !lastAiQuestion.textContent.includes('?')) {
+        addMessage("Ask me a question first, then I can give hints!", 'aiMsg');
+        return;
+      }
+      
+      addMessage("🔍 I'm stuck, can you give me a hint?", 'userMsg');
+      
+      const resp = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: "I'm stuck on your last question. Can you give me a hint without giving away the answer?"
+        })
+      });
+      const data = await resp.json();
+      addMessage(data.answer, 'aiMsg');
+      
+      await logMessage('user', "🔍 I'm stuck, can you give me a hint?");
+      await logMessage('ai', data.answer);
+    }
+    // Helper function to log messages to Supabase
+    async function logMessage(role, content) {
+      if (!currentStudent || !currentClassroom) return;
+      
+      await supabase.from('messages').insert({
+        classroom_id: currentClassroom.id,
+        student_id: currentStudent.id,
+        role: role,
+        subject: document.getElementById('subjectSelect').value || null,
+        content: content
+      });
+    }
+  </script>
+</body>
 </html>
